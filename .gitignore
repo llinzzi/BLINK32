@@ -1,0 +1,67 @@
+build
+mx.scratch
+!.settings
+
+# Build outputs
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+cmake-build-*/
+
+# IDE files
+.vscode/
+.settings/
+*.swp
+*.swo
+
+# Compiled object files
+*.o
+*.obj
+*.elf
+*.bin
+*.hex
+*.srec
+
+# Linker output
+*.map
+
+# Keil MDK
+*.uvprojx
+*.uvoptx
+*.uvgui*
+RTE/_*
+
+# IAR Embedded Workbench
+*.eww
+*.ewp
+*.ewd
+*.ewt
+settings/*.cus
+
+# STM32CubeIDE
+*.project
+*.cproject
+*.launch
+*.ioc
+*.mxscratch
+*.bak
+
+# Atollic TrueSTUDIO
+*.wrk
+*.wsdt
+
+# System files
+.DS_Store
+Thumbs.db
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+
+# Temporary files
+*.tmp
+*.temp
+*.log
