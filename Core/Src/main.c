@@ -44,6 +44,7 @@ typedef enum {
 #define DEBOUNCE_DELAY    50
 #define BEEP_DURATION     1000  // 1秒蜂鸣时间
 #define ALARM_FLASH_PERIOD 200  // 200ms闪烁周期
+#define BEEP_PWM_PERIOD   987   // TIM16周期值
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -95,10 +96,8 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
   beep_active = 1;
   beep_start_time = HAL_GetTick();
   
-  /* Start PWM for beep */
-  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
   /* Set PWM for beep sound (50% duty cycle) */
-  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 32768);
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, BEEP_PWM_PERIOD/2);  // 50%占空比
 }
 
 /**
@@ -130,7 +129,6 @@ void Button_Check(void)
         {
           alarm_active = 0;
           beep_active = 0;
-          HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
           __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
           
           // Return to previous LED state
@@ -174,7 +172,6 @@ void Beep_Control(void)
     {
       beep_active = 0;
       /* Stop PWM for beep */
-      HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
       __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
     }
   }
@@ -289,6 +286,10 @@ int main(void)
   HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
   /* Set initial PWM value to 0 */
   __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
+  
+  /* Initialize TIM16 for beep (but don't start it yet) */
+  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
   /* USER CODE END 2 */
 
   /* Infinite loop */
