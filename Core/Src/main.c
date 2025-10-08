@@ -53,7 +53,6 @@ typedef enum {
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-
 /* USER CODE BEGIN PV */
 LED_StateTypeDef led_state = LED_OFF;
 uint32_t pwm_value = 0;
@@ -64,6 +63,7 @@ uint32_t beep_start_time = 0;
 uint8_t alarm_active = 0;
 uint32_t alarm_flash_time = 0;
 uint8_t alarm_led_state = 0;
+uint8_t test_mode = 0;  // 测试模式标志
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -73,10 +73,43 @@ void LED_Breathing_Control(void);
 void Button_Check(void);
 void Beep_Control(void);
 void Alarm_LED_Control(void);
+void Simple_Beep_Test(void);  // 添加简单测试函数
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/**
+  * @brief  Simple beep test function
+  * @retval None
+  */
+void Simple_Beep_Test(void)
+{
+  // 直接控制GPIO测试蜂鸣器
+  HAL_GPIO_Init(BEEP_GPIO_Port, &(GPIO_InitTypeDef){
+    .Pin = BEEP_Pin,
+    .Mode = GPIO_MODE_OUTPUT_PP,
+    .Pull = GPIO_NOPULL,
+    .Speed = GPIO_SPEED_FREQ_LOW
+  });
+  
+  // 快速切换GPIO产生声音
+  for(int i = 0; i < 2700; i++) {
+    HAL_GPIO_WritePin(BEEP_GPIO_Port, BEEP_Pin, GPIO_PIN_SET);
+    for(volatile int j = 0; j < 1000; j++);  // 短延时
+    HAL_GPIO_WritePin(BEEP_GPIO_Port, BEEP_Pin, GPIO_PIN_RESET);
+    for(volatile int j = 0; j < 1000; j++);  // 短延时
+  }
+  
+  // 恢复为PWM模式
+  HAL_GPIO_Init(BEEP_GPIO_Port, &(GPIO_InitTypeDef){
+    .Pin = BEEP_Pin,
+    .Mode = GPIO_MODE_AF_PP,
+    .Pull = GPIO_NOPULL,
+    .Speed = GPIO_SPEED_FREQ_LOW,
+    .Alternate = GPIO_AF5_TIM16
+  });
+}
+
 /**
   * @brief  Alarm callback in non-blocking mode
   * @param  hrtc: RTC handle
@@ -131,7 +164,7 @@ void Button_Check(void)
           beep_active = 0;
           __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
           
-          // Return to previous LED state
+          // 停止LED闪烁，恢复到之前的LED状态
           if(led_state == LED_ON)
           {
             __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
@@ -290,6 +323,9 @@ int main(void)
   /* Initialize TIM16 for beep (but don't start it yet) */
   HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
   __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+  
+  /* Test beep on startup to verify it works */
+  Simple_Beep_Test();
   /* USER CODE END 2 */
 
   /* Infinite loop */
