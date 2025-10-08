@@ -57,6 +57,13 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define BIG_BTN_Pin GPIO_PIN_0
+#define BIG_BTN_GPIO_Port GPIOA
+#define BIG_BTN_EXTI_IRQn EXTI0_1_IRQn
+#define LEDA_Pin GPIO_PIN_4
+#define LEDA_GPIO_Port GPIOA
+#define BEEP_Pin GPIO_PIN_6
+#define BEEP_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 

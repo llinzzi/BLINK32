@@ -20,6 +20,7 @@
 #include "main.h"
 #include "rtc.h"
 #include "tim.h"
+#include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -90,6 +91,8 @@ int main(void)
   MX_GPIO_Init();
   MX_RTC_Init();
   MX_TIM14_Init();
+  MX_USART1_UART_Init();
+  MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
