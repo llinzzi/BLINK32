@@ -32,7 +32,8 @@
 /* USER CODE BEGIN PTD */
 typedef enum {
   LED_OFF = 0,
-  LED_ON
+  LED_ON,
+  LED_ALARM  // 新增闹钟状态
 } LED_StateTypeDef;
 /* USER CODE END PTD */
 
@@ -41,6 +42,8 @@ typedef enum {
 #define PWM_MAX_VALUE     1600
 #define PWM_STEP_SIZE     16
 #define DEBOUNCE_DELAY    50
+#define BEEP_DURATION     1000  // 1秒蜂鸣时间
+#define ALARM_FLASH_PERIOD 200  // 200ms闪烁周期
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,11 +52,17 @@ typedef enum {
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+
 /* USER CODE BEGIN PV */
 LED_StateTypeDef led_state = LED_OFF;
 uint32_t pwm_value = 0;
 uint32_t last_button_check = 0;
 uint8_t button_prev_state = 1;  // Assume button is not pressed initially (pull-up)
+uint8_t beep_active = 0;
+uint32_t beep_start_time = 0;
+uint8_t alarm_active = 0;
+uint32_t alarm_flash_time = 0;
+uint8_t alarm_led_state = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -61,10 +70,37 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 void LED_Breathing_Control(void);
 void Button_Check(void);
+void Beep_Control(void);
+void Alarm_LED_Control(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/**
+  * @brief  Alarm callback in non-blocking mode
+  * @param  hrtc: RTC handle
+  * @retval None
+  */
+void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
+{
+  /* Activate alarm mode */
+  alarm_active = 1;
+  alarm_flash_time = HAL_GetTick();
+  alarm_led_state = 1;
+  
+  /* Set LED to full brightness initially */
+  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_MAX_VALUE);
+  
+  /* Activate beep */
+  beep_active = 1;
+  beep_start_time = HAL_GetTick();
+  
+  /* Start PWM for beep */
+  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  /* Set PWM for beep sound (50% duty cycle) */
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 32768);
+}
+
 /**
   * @brief  Check button state and handle press/release
   * @retval None
@@ -89,14 +125,35 @@ void Button_Check(void)
       // Check if button is still pressed
       if (HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin) == 0)
       {
-        // Toggle LED state
-        if(led_state == LED_OFF)
+        // If in alarm mode, disable alarm mode
+        if (alarm_active)
         {
-          led_state = LED_ON;
+          alarm_active = 0;
+          beep_active = 0;
+          HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
+          __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+          
+          // Return to previous LED state
+          if(led_state == LED_ON)
+          {
+            __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
+          }
+          else
+          {
+            __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
+          }
         }
         else
         {
-          led_state = LED_OFF;
+          // Toggle LED state
+          if(led_state == LED_OFF)
+          {
+            led_state = LED_ON;
+          }
+          else
+          {
+            led_state = LED_OFF;
+          }
         }
       }
     }
@@ -106,11 +163,62 @@ void Button_Check(void)
 }
 
 /**
+  * @brief  Control beep duration
+  * @retval None
+  */
+void Beep_Control(void)
+{
+  if (beep_active)
+  {
+    if ((HAL_GetTick() - beep_start_time) >= BEEP_DURATION)
+    {
+      beep_active = 0;
+      /* Stop PWM for beep */
+      HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
+      __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+    }
+  }
+}
+
+/**
+  * @brief  Control alarm LED flashing
+  * @retval None
+  */
+void Alarm_LED_Control(void)
+{
+  if (alarm_active)
+  {
+    uint32_t current_time = HAL_GetTick();
+    if ((current_time - alarm_flash_time) >= ALARM_FLASH_PERIOD)
+    {
+      alarm_flash_time = current_time;
+      alarm_led_state = !alarm_led_state;  // Toggle LED state
+      
+      if (alarm_led_state)
+      {
+        __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_MAX_VALUE);  // Full brightness
+      }
+      else
+      {
+        __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);  // Off
+      }
+    }
+  }
+}
+
+/**
   * @brief  Control LED breathing effect
   * @retval None
   */
 void LED_Breathing_Control(void)
 {
+  // 如果在闹钟模式下，不执行正常的LED渐变控制
+  if (alarm_active)
+  {
+    Alarm_LED_Control();
+    return;
+  }
+  
   if(led_state == LED_ON)
   {
     /* Gradually increase brightness */
@@ -177,7 +285,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
-  /* Start PWM signal generation */
+  /* Start PWM signal generation for LED */
   HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
   /* Set initial PWM value to 0 */
   __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
@@ -192,6 +300,7 @@ int main(void)
     /* USER CODE BEGIN 3 */
     Button_Check();
     LED_Breathing_Control();
+    Beep_Control();
     HAL_Delay(10);  /* 10ms delay for smooth transition */
   }
   /* USER CODE END 3 */
@@ -210,14 +319,19 @@ void SystemClock_Config(void)
   */
   HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
 
+  /** Configure LSE Drive Capability
+  */
+  HAL_PWR_EnableBkUpAccess();
+  __HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_LOW);
+
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSE;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
