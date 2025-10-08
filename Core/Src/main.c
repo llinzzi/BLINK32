@@ -30,12 +30,17 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef enum {
+  LED_OFF = 0,
+  LED_ON
+} LED_StateTypeDef;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define PWM_MAX_VALUE     1600
+#define PWM_STEP_SIZE     16
+#define DEBOUNCE_DELAY    50
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -44,20 +49,98 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-
 /* USER CODE BEGIN PV */
-
+LED_StateTypeDef led_state = LED_OFF;
+uint32_t pwm_value = 0;
+uint32_t last_button_check = 0;
+uint8_t button_prev_state = 1;  // Assume button is not pressed initially (pull-up)
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+void LED_Breathing_Control(void);
+void Button_Check(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/**
+  * @brief  Check button state and handle press/release
+  * @retval None
+  */
+void Button_Check(void)
+{
+  uint32_t current_time = HAL_GetTick();
+  
+  // Check button state every 10ms
+  if ((current_time - last_button_check) >= 10)
+  {
+    last_button_check = current_time;
+    
+    uint8_t button_current_state = HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin);
+    
+    // Check for button press (falling edge)
+    if ((button_prev_state == 1) && (button_current_state == 0))
+    {
+      // Debounce delay
+      HAL_Delay(DEBOUNCE_DELAY);
+      
+      // Check if button is still pressed
+      if (HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin) == 0)
+      {
+        // Toggle LED state
+        if(led_state == LED_OFF)
+        {
+          led_state = LED_ON;
+        }
+        else
+        {
+          led_state = LED_OFF;
+        }
+      }
+    }
+    
+    button_prev_state = button_current_state;
+  }
+}
 
+/**
+  * @brief  Control LED breathing effect
+  * @retval None
+  */
+void LED_Breathing_Control(void)
+{
+  if(led_state == LED_ON)
+  {
+    /* Gradually increase brightness */
+    if(pwm_value < PWM_MAX_VALUE)
+    {
+      pwm_value += PWM_STEP_SIZE;
+      if(pwm_value > PWM_MAX_VALUE)
+      {
+        pwm_value = PWM_MAX_VALUE;
+      }
+      __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
+    }
+  }
+  else
+  {
+    /* Gradually decrease brightness */
+    if(pwm_value > 0)
+    {
+      if(pwm_value > PWM_STEP_SIZE)
+      {
+        pwm_value -= PWM_STEP_SIZE;
+      }
+      else
+      {
+        pwm_value = 0;
+      }
+      __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
+    }
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -94,7 +177,10 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
-
+  /* Start PWM signal generation */
+  HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
+  /* Set initial PWM value to 0 */
+  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -104,6 +190,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    Button_Check();
+    LED_Breathing_Control();
+    HAL_Delay(10);  /* 10ms delay for smooth transition */
   }
   /* USER CODE END 3 */
 }
