@@ -156,10 +156,9 @@ void Button_Check(void)
         }
         else
         {
-          // Short press (< 2 seconds)
+          // Short press (< 2 seconds) - cycle through states: OFF -> DIM -> OFF
           if (press_duration < LONG_PRESS_TIME)
           {
-            // Toggle LED state: OFF -> DIM -> BRIGHT -> OFF
             switch(led_state)
             {
               case LED_OFF:
@@ -169,8 +168,10 @@ void Button_Check(void)
                 Exit_Low_Power_Mode();
                 break;
               case LED_DIM:
-                led_state = LED_BRIGHT;
-                pwm_value = PWM_BRIGHT_VALUE;
+                led_state = LED_OFF;
+                pwm_value = 0;
+                system_state = SYSTEM_LOW_POWER;
+                Enter_Low_Power_Mode();
                 break;
               case LED_BRIGHT:
                 led_state = LED_OFF;
@@ -182,27 +183,36 @@ void Button_Check(void)
                 break;
             }
           }
-          // Long press (>= 2 seconds)
-          else
-          {
-            if (led_state == LED_OFF)
-            {
-              led_state = LED_BRIGHT;
-              pwm_value = PWM_BRIGHT_VALUE;
-              system_state = SYSTEM_NORMAL;
-              Exit_Low_Power_Mode();
-            }
-            else
-            {
-              led_state = LED_OFF;
-              pwm_value = 0;
-              system_state = SYSTEM_LOW_POWER;
-              Enter_Low_Power_Mode();
-            }
-          }
         }
         
         button_press_detected = 0;
+      }
+    }
+    // Check for long press while button is still pressed
+    else if ((button_prev_state == 0) && (button_current_state == 0) && button_press_detected)
+    {
+      uint32_t press_duration = current_time - last_button_press_time;
+      
+      // Long press (>= 2 seconds) - go directly to BRIGHT state
+      if (press_duration >= LONG_PRESS_TIME)
+      {
+        // Only change state if not already in BRIGHT or if in alarm mode
+        if (alarm_active || led_state != LED_BRIGHT)
+        {
+          if (alarm_active) {
+            alarm_active = 0;
+            beep_active = 0;
+            __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+          }
+          
+          led_state = LED_BRIGHT;
+          pwm_value = PWM_BRIGHT_VALUE;
+          system_state = SYSTEM_NORMAL;
+          Exit_Low_Power_Mode();
+          
+          // Reset button press detection to avoid repeated triggering
+          button_press_detected = 0;
+        }
       }
     }
     
@@ -371,7 +381,8 @@ int main(void)
   __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
   
   /* Initialize TIM16 for beep (but don't start it yet) */
-  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  // 调试
+  // HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
   __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
   
   

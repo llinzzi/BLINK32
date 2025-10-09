@@ -78,11 +78,11 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 #define PWM_MAX_VALUE         1600
-#define PWM_DIM_VALUE         400    // 微亮PWM值
+#define PWM_DIM_VALUE         50    // 微亮PWM值
 #define PWM_BRIGHT_VALUE      1600   // 高亮PWM值
 #define PWM_STEP_SIZE         16
 #define DEBOUNCE_DELAY        50
-#define LONG_PRESS_TIME       2000   // 长按2秒
+#define LONG_PRESS_TIME       1000   // 长按2秒
 #define BEEP_DURATION         30000  // 闹铃持续30秒
 #define ALARM_INITIAL_PERIOD  1000   // 初始闪烁周期1秒
 #define ALARM_MIN_PERIOD      100    // 最小闪烁周期100ms
