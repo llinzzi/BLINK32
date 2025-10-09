@@ -36,7 +36,18 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
+typedef enum {
+  LED_OFF = 0,      // 熄灭状态
+  LED_DIM,          // 微亮状态
+  LED_BRIGHT,       // 高亮状态
+  LED_ALARM_FLASH,  // 闹铃闪烁状态
+  LED_ALARM_ON      // 闹铃常亮状态
+} LED_StateTypeDef;
 
+typedef enum {
+  SYSTEM_NORMAL = 0,  // 正常模式
+  SYSTEM_LOW_POWER    // 低功耗模式
+} System_StateTypeDef;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -66,7 +77,17 @@ void Error_Handler(void);
 #define BEEP_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
-
+#define PWM_MAX_VALUE         1600
+#define PWM_DIM_VALUE         400    // 微亮PWM值
+#define PWM_BRIGHT_VALUE      1600   // 高亮PWM值
+#define PWM_STEP_SIZE         16
+#define DEBOUNCE_DELAY        50
+#define LONG_PRESS_TIME       2000   // 长按2秒
+#define BEEP_DURATION         30000  // 闹铃持续30秒
+#define ALARM_INITIAL_PERIOD  1000   // 初始闪烁周期1秒
+#define ALARM_MIN_PERIOD      100    // 最小闪烁周期100ms
+#define ALARM_PERIOD_STEP     50     // 周期递减步长
+#define BEEP_PWM_PERIOD       987    // TIM16周期值
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

@@ -30,21 +30,12 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-typedef enum {
-  LED_OFF = 0,
-  LED_ON,
-  LED_ALARM  // 新增闹钟状态
-} LED_StateTypeDef;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define PWM_MAX_VALUE     1600
-#define PWM_STEP_SIZE     16
-#define DEBOUNCE_DELAY    50
-#define BEEP_DURATION     1000  // 1秒蜂鸣时间
-#define ALARM_FLASH_PERIOD 200  // 200ms闪烁周期
-#define BEEP_PWM_PERIOD   987   // TIM16周期值
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -55,24 +46,31 @@ typedef enum {
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
 LED_StateTypeDef led_state = LED_OFF;
+System_StateTypeDef system_state = SYSTEM_NORMAL;
 uint32_t pwm_value = 0;
+uint32_t last_button_press_time = 0;
 uint32_t last_button_check = 0;
 uint8_t button_prev_state = 1;  // Assume button is not pressed initially (pull-up)
+uint8_t button_press_detected = 0;
 uint8_t beep_active = 0;
 uint32_t beep_start_time = 0;
 uint8_t alarm_active = 0;
+uint32_t alarm_start_time = 0;
 uint32_t alarm_flash_time = 0;
 uint8_t alarm_led_state = 0;
+uint32_t alarm_flash_period = ALARM_INITIAL_PERIOD;
 uint8_t test_mode = 0;  // 测试模式标志
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-void LED_Breathing_Control(void);
+void LED_Control(void);
 void Button_Check(void);
 void Beep_Control(void);
-void Alarm_LED_Control(void);
+void Alarm_Control(void);
+void Enter_Low_Power_Mode(void);
+void Exit_Low_Power_Mode(void);
 void Simple_Beep_Test(void);  // 添加简单测试函数
 /* USER CODE END PFP */
 
@@ -119,11 +117,13 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 {
   /* Activate alarm mode */
   alarm_active = 1;
+  alarm_start_time = HAL_GetTick();
   alarm_flash_time = HAL_GetTick();
   alarm_led_state = 1;
+  alarm_flash_period = ALARM_INITIAL_PERIOD;
   
   /* Set LED to full brightness initially */
-  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_MAX_VALUE);
+  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_BRIGHT_VALUE);
   
   /* Activate beep */
   beep_active = 1;
@@ -131,6 +131,11 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
   
   /* Set PWM for beep sound (50% duty cycle) */
   __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, BEEP_PWM_PERIOD/2);  // 50%占空比
+  
+  /* Exit low power mode if in it */
+  if (system_state == SYSTEM_LOW_POWER) {
+    Exit_Low_Power_Mode();
+  }
 }
 
 /**
@@ -151,12 +156,21 @@ void Button_Check(void)
     // Check for button press (falling edge)
     if ((button_prev_state == 1) && (button_current_state == 0))
     {
+      // Record press time
+      last_button_press_time = current_time;
+      button_press_detected = 1;
+    }
+    // Check for button release (rising edge)
+    else if ((button_prev_state == 0) && (button_current_state == 1) && button_press_detected)
+    {
       // Debounce delay
       HAL_Delay(DEBOUNCE_DELAY);
       
-      // Check if button is still pressed
-      if (HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin) == 0)
+      // Check if button is still released
+      if (HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin) == 1)
       {
+        uint32_t press_duration = current_time - last_button_press_time;
+        
         // If in alarm mode, disable alarm mode
         if (alarm_active)
         {
@@ -164,28 +178,62 @@ void Button_Check(void)
           beep_active = 0;
           __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
           
-          // 停止LED闪烁，恢复到之前的LED状态
-          if(led_state == LED_ON)
-          {
-            __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
-          }
-          else
-          {
-            __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
-          }
+          // 停止LED闪烁，恢复到熄灭状态并进入低功耗模式
+          led_state = LED_OFF;
+          pwm_value = 0;
+          __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
+          system_state = SYSTEM_LOW_POWER;
+          Enter_Low_Power_Mode();
         }
         else
         {
-          // Toggle LED state
-          if(led_state == LED_OFF)
+          // Short press (< 2 seconds)
+          if (press_duration < LONG_PRESS_TIME)
           {
-            led_state = LED_ON;
+            // Toggle LED state: OFF -> DIM -> BRIGHT -> OFF
+            switch(led_state)
+            {
+              case LED_OFF:
+                led_state = LED_DIM;
+                pwm_value = PWM_DIM_VALUE;
+                system_state = SYSTEM_NORMAL;
+                Exit_Low_Power_Mode();
+                break;
+              case LED_DIM:
+                led_state = LED_BRIGHT;
+                pwm_value = PWM_BRIGHT_VALUE;
+                break;
+              case LED_BRIGHT:
+                led_state = LED_OFF;
+                pwm_value = 0;
+                system_state = SYSTEM_LOW_POWER;
+                Enter_Low_Power_Mode();
+                break;
+              default:
+                break;
+            }
           }
+          // Long press (>= 2 seconds)
           else
           {
-            led_state = LED_OFF;
+            if (led_state == LED_OFF)
+            {
+              led_state = LED_BRIGHT;
+              pwm_value = PWM_BRIGHT_VALUE;
+              system_state = SYSTEM_NORMAL;
+              Exit_Low_Power_Mode();
+            }
+            else
+            {
+              led_state = LED_OFF;
+              pwm_value = 0;
+              system_state = SYSTEM_LOW_POWER;
+              Enter_Low_Power_Mode();
+            }
           }
         }
+        
+        button_press_detected = 0;
       }
     }
     
@@ -206,77 +254,110 @@ void Beep_Control(void)
       beep_active = 0;
       /* Stop PWM for beep */
       __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+      
+      // 闹铃结束后进入低功耗模式
+      alarm_active = 0;
+      led_state = LED_OFF;
+      pwm_value = 0;
+      __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
+      system_state = SYSTEM_LOW_POWER;
+      Enter_Low_Power_Mode();
     }
   }
 }
 
 /**
-  * @brief  Control alarm LED flashing
+  * @brief  Control alarm LED flashing and frequency increase
   * @retval None
   */
-void Alarm_LED_Control(void)
+void Alarm_Control(void)
 {
   if (alarm_active)
   {
     uint32_t current_time = HAL_GetTick();
-    if ((current_time - alarm_flash_time) >= ALARM_FLASH_PERIOD)
-    {
-      alarm_flash_time = current_time;
-      alarm_led_state = !alarm_led_state;  // Toggle LED state
-      
-      if (alarm_led_state)
-      {
-        __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_MAX_VALUE);  // Full brightness
+    uint32_t elapsed_time = current_time - alarm_start_time;
+    
+    // 每5秒递增一次闪烁频率，直到达到最高速度
+    if (elapsed_time > 0 && (elapsed_time % 5000) < 100) {
+      if (alarm_flash_period > ALARM_MIN_PERIOD) {
+        alarm_flash_period -= ALARM_PERIOD_STEP;
+        if (alarm_flash_period < ALARM_MIN_PERIOD) {
+          alarm_flash_period = ALARM_MIN_PERIOD;
+        }
       }
-      else
+    }
+    
+    // 30分钟后进入常亮状态
+    if (elapsed_time >= 1800000) { // 30分钟 = 1800000毫秒
+      led_state = LED_ALARM_ON;
+      __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_BRIGHT_VALUE);
+    } else {
+      // 闪烁状态
+      if ((current_time - alarm_flash_time) >= alarm_flash_period)
       {
-        __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);  // Off
+        alarm_flash_time = current_time;
+        alarm_led_state = !alarm_led_state;  // Toggle LED state
+        
+        if (alarm_led_state)
+        {
+          __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_BRIGHT_VALUE);  // Full brightness
+        }
+        else
+        {
+          __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);  // Off
+        }
       }
     }
   }
 }
 
 /**
-  * @brief  Control LED breathing effect
+  * @brief  Control LED states
   * @retval None
   */
-void LED_Breathing_Control(void)
+void LED_Control(void)
 {
-  // 如果在闹钟模式下，不执行正常的LED渐变控制
+  // 如果在闹钟模式下，使用闹钟控制逻辑
   if (alarm_active)
   {
-    Alarm_LED_Control();
+    Alarm_Control();
     return;
   }
   
-  if(led_state == LED_ON)
-  {
-    /* Gradually increase brightness */
-    if(pwm_value < PWM_MAX_VALUE)
-    {
-      pwm_value += PWM_STEP_SIZE;
-      if(pwm_value > PWM_MAX_VALUE)
-      {
-        pwm_value = PWM_MAX_VALUE;
-      }
-      __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
-    }
-  }
-  else
-  {
-    /* Gradually decrease brightness */
-    if(pwm_value > 0)
-    {
-      if(pwm_value > PWM_STEP_SIZE)
-      {
-        pwm_value -= PWM_STEP_SIZE;
-      }
-      else
-      {
-        pwm_value = 0;
-      }
-      __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
-    }
+  // 正常模式下的LED控制
+  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
+}
+
+/**
+  * @brief  Enter low power mode
+  * @retval None
+  */
+void Enter_Low_Power_Mode(void)
+{
+  // 停止不必要的外设以节省功耗
+  HAL_TIM_PWM_Stop(&htim14, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
+  
+  // 进入睡眠模式
+  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+}
+
+/**
+  * @brief  Exit low power mode
+  * @retval None
+  */
+void Exit_Low_Power_Mode(void)
+{
+  // 重新启动必要的外设
+  HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  
+  // 设置当前PWM值
+  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
+  if (beep_active) {
+    __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, BEEP_PWM_PERIOD/2);
+  } else {
+    __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
   }
 }
 /* USER CODE END 0 */
@@ -326,6 +407,10 @@ int main(void)
   
   /* Test beep on startup to verify it works */
   Simple_Beep_Test();
+  
+  /* Enter low power mode initially */
+  system_state = SYSTEM_LOW_POWER;
+  Enter_Low_Power_Mode();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -336,7 +421,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     Button_Check();
-    LED_Breathing_Control();
+    LED_Control();
     Beep_Control();
     HAL_Delay(10);  /* 10ms delay for smooth transition */
   }
