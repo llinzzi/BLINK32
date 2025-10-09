@@ -39,13 +39,7 @@ RTE/_*
 *.ewt
 settings/*.cus
 
-# STM32CubeIDE
-*.project
-*.cproject
-*.launch
-*.ioc
-*.mxscratch
-*.bak
+
 
 # Atollic TrueSTUDIO
 *.wrk

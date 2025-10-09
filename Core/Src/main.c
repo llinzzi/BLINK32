@@ -71,42 +71,11 @@ void Beep_Control(void);
 void Alarm_Control(void);
 void Enter_Low_Power_Mode(void);
 void Exit_Low_Power_Mode(void);
-void Simple_Beep_Test(void);  // 添加简单测试函数
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-/**
-  * @brief  Simple beep test function
-  * @retval None
-  */
-void Simple_Beep_Test(void)
-{
-  // 直接控制GPIO测试蜂鸣器
-  HAL_GPIO_Init(BEEP_GPIO_Port, &(GPIO_InitTypeDef){
-    .Pin = BEEP_Pin,
-    .Mode = GPIO_MODE_OUTPUT_PP,
-    .Pull = GPIO_NOPULL,
-    .Speed = GPIO_SPEED_FREQ_LOW
-  });
-  
-  // 快速切换GPIO产生声音
-  for(int i = 0; i < 2700; i++) {
-    HAL_GPIO_WritePin(BEEP_GPIO_Port, BEEP_Pin, GPIO_PIN_SET);
-    for(volatile int j = 0; j < 1000; j++);  // 短延时
-    HAL_GPIO_WritePin(BEEP_GPIO_Port, BEEP_Pin, GPIO_PIN_RESET);
-    for(volatile int j = 0; j < 1000; j++);  // 短延时
-  }
-  
-  // 恢复为PWM模式
-  HAL_GPIO_Init(BEEP_GPIO_Port, &(GPIO_InitTypeDef){
-    .Pin = BEEP_Pin,
-    .Mode = GPIO_MODE_AF_PP,
-    .Pull = GPIO_NOPULL,
-    .Speed = GPIO_SPEED_FREQ_LOW,
-    .Alternate = GPIO_AF5_TIM16
-  });
-}
+
 
 /**
   * @brief  Alarm callback in non-blocking mode
@@ -405,8 +374,6 @@ int main(void)
   HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
   __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
   
-  /* Test beep on startup to verify it works */
-  Simple_Beep_Test();
   
   /* Enter low power mode initially */
   system_state = SYSTEM_LOW_POWER;
