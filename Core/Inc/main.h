@@ -93,6 +93,7 @@ void Error_Handler(void);
 #define PWM_TRANSITION_STEP   10       // PWM渐变步长
 #define PWM_TRANSITION_DELAY  10       // PWM渐变延迟(ms)
 #define BEEP_ENABLE           0        // 蜂鸣器开关量 1-开启 0-关闭
+#define ALARM_ENABLE          0        // 闹铃开关量 1-开启 0-关闭
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

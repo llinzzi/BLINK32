@@ -83,6 +83,16 @@ void Exit_Low_Power_Mode(void);
   */
 void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 {
+  /* Check if alarm is enabled */
+  if (!ALARM_ENABLE) {
+    /* If alarm is disabled, enter low power mode immediately */
+    if (system_state != SYSTEM_LOW_POWER) {
+      system_state = SYSTEM_LOW_POWER;
+      Enter_Low_Power_Mode();
+    }
+    return;
+  }
+  
   /* Activate alarm mode */
   alarm_active = 1;
   alarm_start_time = HAL_GetTick();
