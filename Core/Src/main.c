@@ -97,9 +97,15 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
   target_pwm_value = PWM_BRIGHT_VALUE;  // 设置目标PWM值
   pwm_value = PWM_BRIGHT_VALUE;  // 立即设置当前值以确保快速响应
   
-  /* Do not activate beep initially - only activate after 30 minutes */
-  beep_active = 0;
-  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);  // No beep sound initially
+  /* Activate beep based on BEEP_ENABLE flag */
+  if (BEEP_ENABLE) {
+    beep_active = 1;
+    beep_start_time = HAL_GetTick();
+    __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, BEEP_PWM_PERIOD/2);  // 50%占空比
+  } else {
+    beep_active = 0;
+    __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+  }
   
   /* Exit low power mode if in it */
   if (system_state == SYSTEM_LOW_POWER) {
@@ -418,11 +424,15 @@ void Exit_Low_Power_Mode(void)
 {
   // 重新启动必要的外设
   HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
-  // HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  
+  // 根据蜂鸣器开关量决定是否启动TIM16
+  if (BEEP_ENABLE) {
+    HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  }
   
   // 设置当前PWM值
   __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
-  if (beep_active) {
+  if (beep_active && BEEP_ENABLE) {
     __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, BEEP_PWM_PERIOD/2);
   } else {
     __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
