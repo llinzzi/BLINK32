@@ -58,10 +58,7 @@ uint8_t beep_active = 0;
 uint32_t beep_start_time = 0;
 uint8_t alarm_active = 0;
 uint32_t alarm_start_time = 0;
-uint32_t alarm_flash_time = 0;
-uint8_t alarm_led_state = 0;
-uint32_t alarm_flash_period = ALARM_INITIAL_PERIOD;
-uint8_t test_mode = 0;  // 测试模式标志
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -89,9 +86,6 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
   /* Activate alarm mode */
   alarm_active = 1;
   alarm_start_time = HAL_GetTick();
-  alarm_flash_time = HAL_GetTick();
-  alarm_led_state = 1;
-  alarm_flash_period = ALARM_INITIAL_PERIOD;
   
   /* Set LED to full brightness initially */
   target_pwm_value = PWM_BRIGHT_VALUE;  // 设置目标PWM值
