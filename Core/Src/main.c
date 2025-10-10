@@ -176,16 +176,10 @@ void Button_Check(void)
               case LED_DIM:
                 led_state = LED_OFF;
                 target_pwm_value = 0;  // 设置目标PWM值
-                pwm_value = 0;  // 立即关闭LED
-                system_state = SYSTEM_LOW_POWER;
-                Enter_Low_Power_Mode();
                 break;
               case LED_BRIGHT:
                 led_state = LED_OFF;
                 target_pwm_value = 0;  // 设置目标PWM值
-                pwm_value = 0;  // 立即关闭LED
-                system_state = SYSTEM_LOW_POWER;
-                Enter_Low_Power_Mode();
                 break;
               default:
                 break;
@@ -373,27 +367,19 @@ void LED_Control(void)
     }
     else if (pwm_value > target_pwm_value)
     {
-      // 熄灭时立即关闭（突然熄灭）
-      if (target_pwm_value == 0)
+      // 渐暗：减少PWM值（包括关闭时也使用渐变）
+      if (pwm_value > PWM_TRANSITION_STEP)
       {
-        pwm_value = 0;
+        pwm_value -= PWM_TRANSITION_STEP;
       }
       else
       {
-        // 渐暗：减少PWM值
-        if (pwm_value > PWM_TRANSITION_STEP)
-        {
-          pwm_value -= PWM_TRANSITION_STEP;
-        }
-        else
-        {
-          pwm_value = 0;
-        }
-        
-        if (pwm_value < target_pwm_value)
-        {
-          pwm_value = target_pwm_value;
-        }
+        pwm_value = 0;
+      }
+      
+      if (pwm_value < target_pwm_value)
+      {
+        pwm_value = target_pwm_value;
       }
     }
   }
@@ -499,6 +485,13 @@ int main(void)
     Button_Check();
     LED_Control();
     Beep_Control();
+    
+    // 检查是否LED已完全关闭且处于关闭状态，如果是则进入睡眠模式
+    if (led_state == LED_OFF && pwm_value == 0 && system_state != SYSTEM_LOW_POWER) {
+      system_state = SYSTEM_LOW_POWER;
+      Enter_Low_Power_Mode();
+    }
+    
     HAL_Delay(10);  /* 10ms delay for smooth transition */
   }
   /* USER CODE END 3 */
