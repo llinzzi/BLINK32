@@ -48,8 +48,10 @@
 LED_StateTypeDef led_state = LED_OFF;
 System_StateTypeDef system_state = SYSTEM_NORMAL;
 uint32_t pwm_value = 0;
+uint32_t target_pwm_value = 0;  // 添加目标PWM值变量
 uint32_t last_button_press_time = 0;
 uint32_t last_button_check = 0;
+uint32_t last_pwm_transition_time = 0;  // 添加PWM渐变时间变量
 uint8_t button_prev_state = 1;  // Assume button is not pressed initially (pull-up)
 uint8_t button_press_detected = 0;
 uint8_t beep_active = 0;
@@ -92,14 +94,12 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
   alarm_flash_period = ALARM_INITIAL_PERIOD;
   
   /* Set LED to full brightness initially */
-  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_BRIGHT_VALUE);
+  target_pwm_value = PWM_BRIGHT_VALUE;  // 设置目标PWM值
+  pwm_value = PWM_BRIGHT_VALUE;  // 立即设置当前值以确保快速响应
   
-  /* Activate beep */
-  beep_active = 1;
-  beep_start_time = HAL_GetTick();
-  
-  /* Set PWM for beep sound (50% duty cycle) */
-  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, BEEP_PWM_PERIOD/2);  // 50%占空比
+  /* Do not activate beep initially - only activate after 30 minutes */
+  beep_active = 0;
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);  // No beep sound initially
   
   /* Exit low power mode if in it */
   if (system_state == SYSTEM_LOW_POWER) {
@@ -163,19 +163,21 @@ void Button_Check(void)
             {
               case LED_OFF:
                 led_state = LED_DIM;
-                pwm_value = PWM_DIM_VALUE;
+                target_pwm_value = PWM_DIM_VALUE;  // 设置目标PWM值
                 system_state = SYSTEM_NORMAL;
                 Exit_Low_Power_Mode();
                 break;
               case LED_DIM:
                 led_state = LED_OFF;
-                pwm_value = 0;
+                target_pwm_value = 0;  // 设置目标PWM值
+                pwm_value = 0;  // 立即关闭LED
                 system_state = SYSTEM_LOW_POWER;
                 Enter_Low_Power_Mode();
                 break;
               case LED_BRIGHT:
                 led_state = LED_OFF;
-                pwm_value = 0;
+                target_pwm_value = 0;  // 设置目标PWM值
+                pwm_value = 0;  // 立即关闭LED
                 system_state = SYSTEM_LOW_POWER;
                 Enter_Low_Power_Mode();
                 break;
@@ -206,7 +208,7 @@ void Button_Check(void)
           }
           
           led_state = LED_BRIGHT;
-          pwm_value = PWM_BRIGHT_VALUE;
+          target_pwm_value = PWM_BRIGHT_VALUE;  // 设置目标PWM值
           system_state = SYSTEM_NORMAL;
           Exit_Low_Power_Mode();
           
@@ -256,35 +258,77 @@ void Alarm_Control(void)
     uint32_t current_time = HAL_GetTick();
     uint32_t elapsed_time = current_time - alarm_start_time;
     
-    // 每5秒递增一次闪烁频率，直到达到最高速度
-    if (elapsed_time > 0 && (elapsed_time % 5000) < 100) {
-      if (alarm_flash_period > ALARM_MIN_PERIOD) {
-        alarm_flash_period -= ALARM_PERIOD_STEP;
-        if (alarm_flash_period < ALARM_MIN_PERIOD) {
-          alarm_flash_period = ALARM_MIN_PERIOD;
-        }
-      }
-    }
-    
-    // 30分钟后进入常亮状态
-    if (elapsed_time >= 1800000) { // 30分钟 = 1800000毫秒
+    // 30分钟后进入常亮状态并开始蜂鸣
+    if (elapsed_time >= ALARM_DELAY_TIME) { // 30分钟 = 1800000毫秒
+      // 进入LED_ALARM_ON状态
       led_state = LED_ALARM_ON;
-      __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_BRIGHT_VALUE);
+      
+      // 开始蜂鸣
+      if (!beep_active) {
+        beep_active = 1;
+        beep_start_time = current_time;
+        __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, BEEP_PWM_PERIOD/2);  // 50%占空比
+      }
+      
+      // 灯常亮
+      __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_DIM_VALUE);
+      
+      // 30秒后停止闹钟并进入睡眠模式
+      if (beep_active && (current_time - beep_start_time) >= ALARM_BEEP_DURATION) {
+        alarm_active = 0;
+        beep_active = 0;
+        __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+        led_state = LED_OFF;
+        target_pwm_value = 0;  // 设置目标PWM值
+        pwm_value = 0;  // 立即设置当前值
+        system_state = SYSTEM_LOW_POWER;
+        Enter_Low_Power_Mode();
+      }
     } else {
-      // 闪烁状态
-      if ((current_time - alarm_flash_time) >= alarm_flash_period)
-      {
-        alarm_flash_time = current_time;
-        alarm_led_state = !alarm_led_state;  // Toggle LED state
+      // 呼吸效果状态 (LED_ALARM_FLASH) - 使用微光缓慢呼吸
+      static uint32_t breath_time = 0;
+      static uint32_t last_breath_update = 0;
+      
+      // 每50ms更新一次呼吸效果，使变化更缓慢
+      if ((current_time - last_breath_update) >= 50) {
+        last_breath_update = current_time;
         
-        if (alarm_led_state)
-        {
-          __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_BRIGHT_VALUE);  // Full brightness
+        // 更新呼吸效果计时
+        breath_time += 50;
+        if (breath_time >= 4000) {  // 4秒一个周期，使呼吸更缓慢
+          breath_time = 0;
         }
-        else
-        {
-          __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);  // Off
+        
+        // 计算呼吸效果的PWM值 (简化版正弦波效果)
+        // 使用查找表近似正弦波
+        uint32_t step = (breath_time * 360) / 4000;  // 0-360度
+        int32_t breath_pwm;
+        
+        if (step < 90) {
+          // 0-90度: 0-100%
+          breath_pwm = (PWM_DIM_VALUE * step) / 90;
+        } else if (step < 180) {
+          // 90-180度: 100%-0%
+          breath_pwm = (PWM_DIM_VALUE * (180 - step)) / 90;
+        } else if (step < 270) {
+          // 180-270度: 0%到-100%
+          breath_pwm = (PWM_DIM_VALUE * (step - 180)) / 90;
+          breath_pwm = PWM_DIM_VALUE - breath_pwm;  // 反向
+        } else {
+          // 270-360度: -100%到0%
+          breath_pwm = (PWM_DIM_VALUE * (360 - step)) / 90;
         }
+        
+        // 确保PWM值在有效范围内
+        if (breath_pwm > PWM_DIM_VALUE) {
+          breath_pwm = PWM_DIM_VALUE;
+        }
+        if (breath_pwm < 0) {
+          breath_pwm = 0;
+        }
+        
+        // 使用微光值而不是高亮值
+        __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, breath_pwm);
       }
     }
   }
@@ -303,7 +347,52 @@ void LED_Control(void)
     return;
   }
   
-  // 正常模式下的LED控制
+  // 正常模式下的LED控制，实现PWM渐变效果
+  uint32_t current_time = HAL_GetTick();
+  
+  // 每10ms更新一次PWM值以实现渐变效果
+  if ((current_time - last_pwm_transition_time) >= PWM_TRANSITION_DELAY)
+  {
+    last_pwm_transition_time = current_time;
+    
+    // 如果当前PWM值不等于目标PWM值，则进行渐变调整
+    if (pwm_value < target_pwm_value)
+    {
+      // 渐亮：增加PWM值
+      pwm_value += PWM_TRANSITION_STEP;
+      if (pwm_value > target_pwm_value)
+      {
+        pwm_value = target_pwm_value;
+      }
+    }
+    else if (pwm_value > target_pwm_value)
+    {
+      // 熄灭时立即关闭（突然熄灭）
+      if (target_pwm_value == 0)
+      {
+        pwm_value = 0;
+      }
+      else
+      {
+        // 渐暗：减少PWM值
+        if (pwm_value > PWM_TRANSITION_STEP)
+        {
+          pwm_value -= PWM_TRANSITION_STEP;
+        }
+        else
+        {
+          pwm_value = 0;
+        }
+        
+        if (pwm_value < target_pwm_value)
+        {
+          pwm_value = target_pwm_value;
+        }
+      }
+    }
+  }
+  
+  // 设置当前PWM值
   __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
 }
 
@@ -329,7 +418,7 @@ void Exit_Low_Power_Mode(void)
 {
   // 重新启动必要的外设
   HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  // HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
   
   // 设置当前PWM值
   __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
@@ -381,8 +470,7 @@ int main(void)
   __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
   
   /* Initialize TIM16 for beep (but don't start it yet) */
-  // 调试
-  // HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
   __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
   
   

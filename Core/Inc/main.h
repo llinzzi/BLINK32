@@ -79,15 +79,19 @@ void Error_Handler(void);
 /* USER CODE BEGIN Private defines */
 #define PWM_MAX_VALUE         1600
 #define PWM_DIM_VALUE         50    // 微亮PWM值
-#define PWM_BRIGHT_VALUE      1600   // 高亮PWM值
+#define PWM_BRIGHT_VALUE      1000   // 高亮PWM值
 #define PWM_STEP_SIZE         16
 #define DEBOUNCE_DELAY        50
-#define LONG_PRESS_TIME       1000   // 长按2秒
+#define LONG_PRESS_TIME       1000   // 长按1秒
 #define BEEP_DURATION         30000  // 闹铃持续30秒
-#define ALARM_INITIAL_PERIOD  1000   // 初始闪烁周期1秒
-#define ALARM_MIN_PERIOD      100    // 最小闪烁周期100ms
-#define ALARM_PERIOD_STEP     50     // 周期递减步长
+#define ALARM_INITIAL_PERIOD  2000   // 初始闪烁周期2秒
+#define ALARM_MIN_PERIOD      200    // 最小闪烁周期200ms
+#define ALARM_PERIOD_STEP     10     // 周期递减步长
 #define BEEP_PWM_PERIOD       987    // TIM16周期值
+#define ALARM_DELAY_TIME      1800000  // 30分钟延迟时间 (30*60*1000)
+#define ALARM_BEEP_DURATION   30000    // 闹钟蜂鸣持续时间30秒
+#define PWM_TRANSITION_STEP   10       // PWM渐变步长
+#define PWM_TRANSITION_DELAY  10       // PWM渐变延迟(ms)
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
