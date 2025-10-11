@@ -70,10 +70,22 @@ void Beep_Control(void);
 void Alarm_Control(void);
 void Enter_Low_Power_Mode(void);
 void Exit_Low_Power_Mode(void);
+void SystemClock_Config(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+
+/**
+  * @brief  Exit low power mode and restore system clock
+  * @retval None
+  */
+void Exit_Low_Power_Mode_Clock_Restore(void)
+{
+  /* After wake-up from STOP, the MCU clock may need to be reconfigured */
+  SystemClock_Config();
+}
 
 
 /**
@@ -402,8 +414,8 @@ void Enter_Low_Power_Mode(void)
   HAL_TIM_PWM_Stop(&htim14, TIM_CHANNEL_1);
   HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
   
-  // 进入睡眠模式
-  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+  // 进入STOP模式而不是SLEEP模式
+  HAL_PWR_EnterSTOPMode(PWR_MAINREGULATOR_ON, PWR_STOPENTRY_WFI);
 }
 
 /**
@@ -412,6 +424,9 @@ void Enter_Low_Power_Mode(void)
   */
 void Exit_Low_Power_Mode(void)
 {
+  // 恢复系统时钟（STOP模式会关闭时钟）
+  Exit_Low_Power_Mode_Clock_Restore();
+  
   // 重新启动必要的外设
   HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
   
