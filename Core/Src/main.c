@@ -44,6 +44,7 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+
 /* USER CODE BEGIN PV */
 LED_StateTypeDef led_state = LED_OFF;
 System_StateTypeDef system_state = SYSTEM_NORMAL;
@@ -478,6 +479,7 @@ int main(void)
   MX_TIM14_Init();
   MX_USART1_UART_Init();
   MX_TIM16_Init();
+  MX_TIM17_Init();
   /* USER CODE BEGIN 2 */
   /* Start PWM signal generation for LED */
   HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);

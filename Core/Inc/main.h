@@ -75,6 +75,8 @@ void Error_Handler(void);
 #define LEDA_GPIO_Port GPIOA
 #define BEEP_Pin GPIO_PIN_6
 #define BEEP_GPIO_Port GPIOA
+#define LEDB_Pin GPIO_PIN_7
+#define LEDB_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 #define PWM_MAX_VALUE         1600

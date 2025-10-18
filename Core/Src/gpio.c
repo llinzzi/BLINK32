@@ -50,8 +50,8 @@ void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : BIG_BTN_Pin */
   GPIO_InitStruct.Pin = BIG_BTN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(BIG_BTN_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
