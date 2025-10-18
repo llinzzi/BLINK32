@@ -145,21 +145,21 @@ void Button_Check(void)
     
     uint8_t button_current_state = HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin);
     
-    // Check for button press (falling edge)
-    if ((button_prev_state == 1) && (button_current_state == 0))
+    // Check for button press (rising edge) - now correct for new hardware
+    if ((button_prev_state == 0) && (button_current_state == 1))
     {
       // Record press time
       last_button_press_time = current_time;
       button_press_detected = 1;
     }
-    // Check for button release (rising edge)
-    else if ((button_prev_state == 0) && (button_current_state == 1) && button_press_detected)
+    // Check for button release (falling edge)
+    else if ((button_prev_state == 1) && (button_current_state == 0) && button_press_detected)
     {
       // Debounce delay
       HAL_Delay(DEBOUNCE_DELAY);
       
       // Check if button is still released
-      if (HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin) == 1)
+      if (HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin) == 0)
       {
         uint32_t press_duration = current_time - last_button_press_time;
         
@@ -179,7 +179,7 @@ void Button_Check(void)
         }
         else
         {
-          // Short press (< 2 seconds) - cycle through states: OFF -> DIM -> OFF
+          // Short press (< 1 seconds) - cycle through states: OFF -> DIM -> OFF
           if (press_duration < LONG_PRESS_TIME)
           {
             switch(led_state)
@@ -208,11 +208,11 @@ void Button_Check(void)
       }
     }
     // Check for long press while button is still pressed
-    else if ((button_prev_state == 0) && (button_current_state == 0) && button_press_detected)
+    else if ((button_prev_state == 1) && (button_current_state == 1) && button_press_detected)
     {
       uint32_t press_duration = current_time - last_button_press_time;
       
-      // Long press (>= 2 seconds) - go directly to BRIGHT state
+      // Long press (>= 1 seconds) - go directly to BRIGHT state
       if (press_duration >= LONG_PRESS_TIME)
       {
         // Only change state if not already in BRIGHT or if in alarm mode
