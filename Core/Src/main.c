@@ -43,7 +43,7 @@
 
 /* USER CODE END PM */
 
-/* Private variables --------------------------------------------------------- */
+/* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
 LED_StateTypeDef led_state = LED_OFF;
@@ -415,6 +415,14 @@ void Enter_Low_Power_Mode(void)
   HAL_TIM_PWM_Stop(&htim14, TIM_CHANNEL_1);
   HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
   
+  // 确保调试接口已禁用
+  HAL_DBGMCU_DisableDBGStopMode();
+  HAL_DBGMCU_DisableDBGStandbyMode();
+  
+  // 清除可能阻止进入STANDBY模式的标志位
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+  
   // 进入STANDBY模式
   HAL_PWR_EnterSTANDBYMode();
 }
@@ -468,7 +476,13 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  // Disable debug in low power modes to allow STANDBY mode
+  HAL_DBGMCU_DisableDBGStopMode();
+  HAL_DBGMCU_DisableDBGStandbyMode();
+  
+  // 确保所有可能阻止进入低功耗模式的标志位都被清除
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -483,6 +497,10 @@ int main(void)
   /* Enable wakeup pins for STANDBY mode */
   /* Enable WKUP pin 1 (PA0 - BIG_BTN) - high level trigger */
   HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
+  
+  /* Also enable interrupt for immediate wake-up in normal mode */
+  HAL_NVIC_SetPriority(EXTI0_1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
   
   /* Start PWM signal generation for LED */
   HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
@@ -521,6 +539,18 @@ int main(void)
   }
   else
   {
+    /* 给系统一些时间进行初始化和稳定 */
+    /* 等待60秒后再进入低功耗模式，确保用户有足够时间进行初始操作 */
+    uint32_t start_time = HAL_GetTick();
+    while ((HAL_GetTick() - start_time) < 60000)  // 60秒延迟
+    {
+      // 在等待期间仍处理按键和LED控制，以便用户可以进行操作
+      Button_Check();
+      LED_Control();
+      Beep_Control();
+      HAL_Delay(10);  /* 10ms delay for smooth transition */
+    }
+    
     /* Enter low power mode initially */
     system_state = SYSTEM_LOW_POWER;
     Enter_Low_Power_Mode();

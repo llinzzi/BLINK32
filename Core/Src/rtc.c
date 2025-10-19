@@ -101,10 +101,6 @@ void MX_RTC_Init(void)
   {
     Error_Handler();
   }
-  
-  /* Enable RTC alarm as wakeup source for STANDBY mode */
-  HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, 0, RTC_WAKEUPCLOCK_RTCCLK_DIV16);
-  
   /* USER CODE BEGIN RTC_Init 2 */
 
   /* USER CODE END RTC_Init 2 */
