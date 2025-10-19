@@ -134,17 +134,10 @@ int main(void)
         uint32_t pressDuration = HAL_GetTick() - pressStartTime;
         
         // 根据当前状态和按压时间处理按键事件
-        if (lightState == LIGHT_DIM) {
-          // 微光模式下按键
-          if (pressDuration >= SHORT_PRESS_MIN_MS && pressDuration <= SHORT_PRESS_MAX_MS) {
-            // 短按：关闭灯光并进入待机模式
-            TurnOffLight();
-            EnterStandbyMode();
-          } else if (pressDuration > LONG_PRESS_MS) {
-            // 长按：进入高亮模式
-            SetLightBright();
-            lightState = LIGHT_BRIGHT;
-          }
+        if (lightState == LIGHT_DIM && pressDuration <= SHORT_PRESS_MAX_MS) {
+          // 微光模式下按键 短按：关闭灯光并进入待机模式
+          TurnOffLight();
+          EnterStandbyMode();
         } else if (lightState == LIGHT_BRIGHT) {
           // 高亮模式下按键：关闭灯光并进入待机模式
           TurnOffLight();
