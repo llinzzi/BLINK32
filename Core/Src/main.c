@@ -89,6 +89,12 @@ int main(void)
 
   /* USER CODE BEGIN SysInit */
 
+// 检查是否从Standby模式唤醒
+  if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
+    // 从Standby模式唤醒，清除Standby标志
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+  }
+
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -218,9 +224,11 @@ void EnterStandbyMode(void) {
   
   // 清除所有挂起的中断
   __HAL_RCC_CLEAR_RESET_FLAGS();
-  
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1 | PWR_FLAG_WUF2 | PWR_FLAG_WUF4 | PWR_FLAG_WUF6 | PWR_FLAG_SB);
+
   // 使能唤醒引脚 (PA0)
   HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
+
   
   // // 进入Standby模式
   HAL_PWR_EnterSTANDBYMode();
