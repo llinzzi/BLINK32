@@ -36,12 +36,20 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-
+// 灯光状态枚举
+typedef enum {
+  LIGHT_OFF = 0,
+  LIGHT_DIM,      // 微光模式
+  LIGHT_BRIGHT    // 高亮模式
+} LightStateTypeDef;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
-
+#define SHORT_PRESS_MIN_MS    500
+#define SHORT_PRESS_MAX_MS    2000
+#define LONG_PRESS_MS         2000
+#define DIM_TIMEOUT_MS        60000  // 1分钟 = 60,000毫秒
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
@@ -53,7 +61,10 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+void EnterStandbyMode(void);
+void SetLightDim(void);
+void SetLightBright(void);
+void TurnOffLight(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

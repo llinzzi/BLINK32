@@ -44,8 +44,12 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-
 /* USER CODE BEGIN PV */
+// 灯光状态枚举
+LightStateTypeDef lightState = LIGHT_OFF;
+uint32_t pressStartTime = 0;
+uint32_t dimStartTime = 0;
+uint8_t buttonPressed = 0;
 
 /* USER CODE END PV */
 
@@ -95,6 +99,14 @@ int main(void)
   MX_TIM16_Init();
   MX_TIM17_Init();
   /* USER CODE BEGIN 2 */
+  
+  // 启动TIM14 PWM输出 (LEDA)
+  HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
+  
+  // 初始化完成后直接进入微光模式
+  SetLightDim();
+  lightState = LIGHT_DIM;
+  dimStartTime = HAL_GetTick();
 
   /* USER CODE END 2 */
 
@@ -105,6 +117,53 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    // 检查微光模式超时 (1分钟)
+    if (lightState == LIGHT_DIM) {
+      if ((HAL_GetTick() - dimStartTime) >= DIM_TIMEOUT_MS) {
+        // 微光模式超时，关闭灯光并进入待机模式
+        TurnOffLight();
+        EnterStandbyMode();
+      }
+    }
+    
+    // 检查按键状态（软件轮询方式检测按键释放）
+    if (buttonPressed) {
+      if (HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin) == GPIO_PIN_RESET) {
+        // 按键已释放，处理按键事件
+        buttonPressed = 0;
+        uint32_t pressDuration = HAL_GetTick() - pressStartTime;
+        
+        // 根据当前状态和按压时间处理按键事件
+        if (lightState == LIGHT_DIM) {
+          // 微光模式下按键
+          if (pressDuration >= SHORT_PRESS_MIN_MS && pressDuration <= SHORT_PRESS_MAX_MS) {
+            // 短按：关闭灯光并进入待机模式
+            TurnOffLight();
+            EnterStandbyMode();
+          } else if (pressDuration > LONG_PRESS_MS) {
+            // 长按：进入高亮模式
+            SetLightBright();
+            lightState = LIGHT_BRIGHT;
+          }
+        } else if (lightState == LIGHT_BRIGHT) {
+          // 高亮模式下按键：关闭灯光并进入待机模式
+          TurnOffLight();
+          EnterStandbyMode();
+        }
+      } else {
+        // 按键仍处于按下状态，检查是否为长按
+        uint32_t pressDuration = HAL_GetTick() - pressStartTime;
+        if (pressDuration > LONG_PRESS_MS && lightState == LIGHT_DIM) {
+          // 长按：进入高亮模式（无需等待释放）
+          SetLightBright();
+          lightState = LIGHT_BRIGHT;
+          buttonPressed = 0; // 防止重复触发
+        }
+      }
+    }
+    
+    // 短暂延时以减少CPU占用
+    HAL_Delay(10);
   }
   /* USER CODE END 3 */
 }
@@ -156,6 +215,50 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+  * @brief  进入Standby模式
+  * @retval None
+  */
+void EnterStandbyMode(void) {
+  // 关闭所有外设
+  HAL_TIM_PWM_Stop(&htim14, TIM_CHANNEL_1);
+  
+  // 清除所有挂起的中断
+  __HAL_RCC_CLEAR_RESET_FLAGS();
+  
+  // 使能唤醒引脚 (PA0)
+  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
+  
+  // // 进入Standby模式
+  HAL_PWR_EnterSTANDBYMode();
+}
+
+/**
+  * @brief  设置微光模式 (10% PWM)
+  * @retval None
+  */
+void SetLightDim(void) {
+  // 设置PWM占空比为10% (周期为1600，10%为160)
+  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 160);
+}
+
+/**
+  * @brief  设置高亮模式 (50% PWM)
+  * @retval None
+  */
+void SetLightBright(void) {
+  // 设置PWM占空比为50% (周期为1600，50%为800)
+  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 800);
+}
+
+/**
+  * @brief  关闭灯光
+  * @retval None
+  */
+void TurnOffLight(void) {
+  // 设置PWM占空比为0%
+  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
+}
 
 /* USER CODE END 4 */
 
@@ -173,6 +276,7 @@ void Error_Handler(void)
   }
   /* USER CODE END Error_Handler_Debug */
 }
+
 #ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
