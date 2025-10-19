@@ -43,7 +43,7 @@
 
 /* USER CODE END PM */
 
-/* Private variables ---------------------------------------------------------*/
+/* Private variables --------------------------------------------------------- */
 
 /* USER CODE BEGIN PV */
 LED_StateTypeDef led_state = LED_OFF;
@@ -53,7 +53,7 @@ uint32_t target_pwm_value = 0;  // 添加目标PWM值变量
 uint32_t last_button_press_time = 0;
 uint32_t last_button_check = 0;
 uint32_t last_pwm_transition_time = 0;  // 添加PWM渐变时间变量
-uint8_t button_prev_state = 1;  // Assume button is not pressed initially (pull-up)
+uint8_t button_prev_state = 0;  // Assume button is not pressed initially (pull-down)
 uint8_t button_press_detected = 0;
 uint8_t beep_active = 0;
 uint32_t beep_start_time = 0;
@@ -415,8 +415,8 @@ void Enter_Low_Power_Mode(void)
   HAL_TIM_PWM_Stop(&htim14, TIM_CHANNEL_1);
   HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
   
-  // 进入STOP模式而不是SLEEP模式
-  HAL_PWR_EnterSTOPMode(PWR_MAINREGULATOR_ON, PWR_STOPENTRY_WFI);
+  // 进入STANDBY模式
+  HAL_PWR_EnterSTANDBYMode();
 }
 
 /**
@@ -425,9 +425,7 @@ void Enter_Low_Power_Mode(void)
   */
 void Exit_Low_Power_Mode(void)
 {
-  // 恢复系统时钟（STOP模式会关闭时钟）
-  Exit_Low_Power_Mode_Clock_Restore();
-  
+  // STANDBY模式唤醒后系统会重新启动，不需要恢复时钟
   // 重新启动必要的外设
   HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
   
@@ -481,6 +479,11 @@ int main(void)
   MX_TIM16_Init();
   MX_TIM17_Init();
   /* USER CODE BEGIN 2 */
+  
+  /* Enable wakeup pins for STANDBY mode */
+  /* Enable WKUP pin 1 (PA0 - BIG_BTN) - high level trigger */
+  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
+  
   /* Start PWM signal generation for LED */
   HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
   /* Set initial PWM value to 0 */
@@ -490,10 +493,38 @@ int main(void)
   HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
   __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
   
-  
-  /* Enter low power mode initially */
-  system_state = SYSTEM_LOW_POWER;
-  Enter_Low_Power_Mode();
+  /* Check if the system was resumed from STANDBY mode */
+  if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET)
+  {
+    /* Clear the STANDBY flag */
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+    
+    /* System was in STANDBY mode, check if button is still pressed */
+    HAL_Delay(DEBOUNCE_DELAY);
+    if (HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin) == 1)
+    {
+      /* Button is still pressed, simulate button press */
+      button_prev_state = 0;  // Simulate previous state as released
+      button_press_detected = 1;
+      last_button_press_time = HAL_GetTick();
+      
+      /* Set system to normal mode */
+      system_state = SYSTEM_NORMAL;
+      Exit_Low_Power_Mode();
+    }
+    else
+    {
+      /* Button not pressed, restore normal operation */
+      system_state = SYSTEM_NORMAL;
+      Exit_Low_Power_Mode();
+    }
+  }
+  else
+  {
+    /* Enter low power mode initially */
+    system_state = SYSTEM_LOW_POWER;
+    Enter_Low_Power_Mode();
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
