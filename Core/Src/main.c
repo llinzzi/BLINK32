@@ -44,13 +44,15 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+
 /* USER CODE BEGIN PV */
 // 灯光状态枚举
 LightStateTypeDef lightState = LIGHT_OFF;
 uint32_t pressStartTime = 0;
 uint32_t dimStartTime = 0;
 uint8_t buttonPressed = 0;
-
+// 添加时间打印相关变量
+uint32_t lastPrintTime = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -123,6 +125,35 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+
+    // 每隔1秒打印系统时间（仅在非待机模式下）
+    if ((HAL_GetTick() - lastPrintTime) >= 1000) {
+      // 获取RTC时间
+      RTC_TimeTypeDef sTime;
+      RTC_DateTypeDef sDate;
+      
+      HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+      HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+      
+      // // 在主循环中添加简单的测试代码
+      // char testStr1[] = "Hello World\r\n";
+      // HAL_UART_Transmit(&huart1, (uint8_t*)testStr1, strlen(testStr1), HAL_MAX_DELAY);
+      // HAL_Delay(1000);
+
+      // 格式化时间字符串
+      char timeStr[50];
+      sprintf(timeStr, "%02d:%02d:%02d\r\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
+      
+      // 通过串口打印时间
+      HAL_UART_Transmit(&huart1, (uint8_t*)timeStr, strlen(timeStr), HAL_MAX_DELAY);
+      
+
+
+      // 更新上次打印时间
+      lastPrintTime = HAL_GetTick();
+    }
+
     // 检查微光模式超时 (1分钟)
     if (lightState == LIGHT_DIM) {
       if ((HAL_GetTick() - dimStartTime) >= DIM_TIMEOUT_MS) {
@@ -228,7 +259,12 @@ void EnterStandbyMode(void) {
 
   // 使能唤醒引脚 (PA0)
   HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
-
+  // 发送进入待机模式的消息
+  char standbyMsg[] = "Entering Standby Mode...\r\n";
+  HAL_UART_Transmit(&huart1, (uint8_t*)standbyMsg, strlen(standbyMsg), HAL_MAX_DELAY);
+  
+  // 重置时间打印变量
+  lastPrintTime = 0;
   
   // // 进入Standby模式
   HAL_PWR_EnterSTANDBYMode();
@@ -277,7 +313,6 @@ void Error_Handler(void)
   }
   /* USER CODE END Error_Handler_Debug */
 }
-
 #ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number

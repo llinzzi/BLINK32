@@ -31,7 +31,10 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "usart.h"
+#include "rtc.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -42,13 +45,16 @@ typedef enum {
   LIGHT_DIM,      // 微光模式
   LIGHT_BRIGHT    // 高亮模式
 } LightStateTypeDef;
+
+// 添加时间打印相关变量
+extern uint32_t lastPrintTime;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
 #define SHORT_PRESS_MIN_MS    500
 #define SHORT_PRESS_MAX_MS    2000
-#define LONG_PRESS_MS         2000
+#define LONG_PRESS_MS         1500
 #define DIM_TIMEOUT_MS        60000  // 1分钟 = 60,000毫秒
 /* USER CODE END EC */
 
