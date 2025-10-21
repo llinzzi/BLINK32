@@ -25,7 +25,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,6 +55,10 @@ uint32_t dimStartTime = 0;
 uint8_t buttonPressed = 0;
 // 添加时间打印相关变量
 uint32_t lastPrintTime = 0;
+
+// 添加串口接收相关变量
+uint8_t rxBuffer[50];  // 接收缓冲区
+uint8_t rxIndex = 0;   // 接收索引
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -63,7 +69,10 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+// 串口命令处理函数声明
+void ProcessSerialCommand(char* command);
+void SetSystemTime(char* timeStr);
+void SetSystemDate(char* dateStr);
 /* USER CODE END 0 */
 
 /**
@@ -92,16 +101,20 @@ int main(void)
   /* USER CODE BEGIN SysInit */
 
 // 检查是否从Standby模式唤醒
-  if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
-    // 从Standby模式唤醒，清除Standby标志
-    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
-  }
+if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
+  // 从Standby模式唤醒，清除Standby标志
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+  // 从STANDBY模式唤醒，RTC配置应该仍然有效
+  // 不需要重新初始化RTC时间和日期
+} else {
+  // 系统首次启动或复位，需要初始化RTC
+  MX_RTC_Init();
+}
 
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_RTC_Init();
   MX_TIM14_Init();
   MX_USART1_UART_Init();
   MX_TIM16_Init();
@@ -115,8 +128,10 @@ int main(void)
   SetLightDim();
   lightState = LIGHT_DIM;
   dimStartTime = HAL_GetTick();
-
-  /* USER CODE END 2 */
+  
+  // 启动串口接收
+  HAL_UART_Receive_IT(&huart1, &rxBuffer[rxIndex], 1);
+/* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -245,6 +260,149 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+  * @brief  USART1中断回调函数
+  * @param  huart 串口句柄
+  * @retval None
+  */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if(huart->Instance == USART1) {
+    // 如果接收到回车符或换行符，则处理命令
+    if(rxBuffer[rxIndex] == '\r' || rxBuffer[rxIndex] == '\n') {
+      // 添加字符串结束符
+      rxBuffer[rxIndex] = '\0';
+      
+      // 处理命令（如果缓冲区不为空）
+      if(rxIndex > 0) {
+        ProcessSerialCommand((char*)rxBuffer);
+      }
+      
+      // 重置接收索引
+      rxIndex = 0;
+    } else {
+      // 继续接收下一个字符
+      rxIndex++;
+      
+      // 防止缓冲区溢出
+      if(rxIndex >= sizeof(rxBuffer)-1) {
+        rxIndex = 0;
+      }
+    }
+    
+    // 继续接收下一个字节
+    HAL_UART_Receive_IT(&huart1, &rxBuffer[rxIndex], 1);
+  }
+}
+
+/**
+  * @brief  处理串口命令
+  * @param  command 命令字符串
+  * @retval None
+  */
+void ProcessSerialCommand(char* command) {
+  // 移除可能存在的换行符
+  char* newline = strchr(command, '\r');
+  if(newline) *newline = '\0';
+  newline = strchr(command, '\n');
+  if(newline) *newline = '\0';
+  
+  // 解析命令
+  if(strncmp(command, "TIME=", 5) == 0) {
+    // 设置时间命令，格式为 TIME=HH:MM:SS
+    SetSystemTime(command+5);
+  } else if(strncmp(command, "DATE=", 5) == 0) {
+    // 设置日期命令，格式为 DATE=YYYY-MM-DD
+    SetSystemDate(command+5);
+  } else {
+    // 未知命令，返回错误信息
+    char errorMsg[] = "ERROR: Unknown command\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+  }
+}
+
+/**
+  * @brief  设置系统时间
+  * @param  timeStr 时间字符串，格式为 HH:MM:SS
+  * @retval None
+  */
+void SetSystemTime(char* timeStr) {
+  int hours, minutes, seconds;
+  
+  // 解析时间字符串
+  if(sscanf(timeStr, "%d:%d:%d", &hours, &minutes, &seconds) == 3) {
+    // 验证时间有效性
+    if(hours >= 0 && hours <= 23 && 
+       minutes >= 0 && minutes <= 59 && 
+       seconds >= 0 && seconds <= 59) {
+       
+      // 设置RTC时间
+      RTC_TimeTypeDef sTime;
+      sTime.Hours = hours;
+      sTime.Minutes = minutes;
+      sTime.Seconds = seconds;
+      sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+      sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+      
+      if(HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) == HAL_OK) {
+        char successMsg[] = "Time set successfully\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
+      } else {
+        char errorMsg[] = "ERROR: Failed to set time\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+      }
+    } else {
+      char errorMsg[] = "ERROR: Invalid time format\r\n";
+      HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+    }
+  } else {
+    char errorMsg[] = "ERROR: Invalid time format\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+  }
+}
+
+/**
+  * @brief  设置系统日期
+  * @param  dateStr 日期字符串，格式为 YYYY-MM-DD
+  * @retval None
+  */
+void SetSystemDate(char* dateStr) {
+  int year, month, day;
+  
+  // 解析日期字符串
+  if(sscanf(dateStr, "%d:%d:%d", &year, &month, &day) == 3) {
+    // 验证日期有效性
+    if(year >= 2000 && year <= 2099 && 
+       month >= 1 && month <= 12 && 
+       day >= 1 && day <= 31) {
+       
+      // 转换年份为RTC格式 (0-99)
+      year = year - 2000;
+       
+      // 设置RTC日期
+      RTC_DateTypeDef sDate;
+      sDate.Year = year;
+      sDate.Month = month;
+      sDate.Date = day;
+      sDate.WeekDay = RTC_WEEKDAY_MONDAY; // 简单设置为周一，实际应该根据日期计算
+      
+      if(HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN) == HAL_OK) {
+        char successMsg[] = "Date set successfully\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
+      } else {
+        char errorMsg[] = "ERROR: Failed to set date\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+      }
+    } else {
+      char errorMsg[] = "ERROR: Invalid date format\r\n";
+      HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+    }
+  } else {
+    char errorMsg[] = "ERROR: Invalid date format\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+  }
+}
+
 /**
   * @brief  进入Standby模式
   * @retval None
