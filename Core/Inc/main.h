@@ -55,7 +55,7 @@ extern uint32_t lastPrintTime;
 #define SHORT_PRESS_MIN_MS    500
 #define SHORT_PRESS_MAX_MS    2000
 #define LONG_PRESS_MS         1500
-#define DIM_TIMEOUT_MS        60000  // 1分钟 = 60,000毫秒
+#define DIM_TIMEOUT_MS        1800000  // 30分钟 = 180,000毫秒
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/

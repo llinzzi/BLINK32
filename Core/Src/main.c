@@ -114,15 +114,18 @@ if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_RTC_Init();
   MX_TIM14_Init();
   MX_USART1_UART_Init();
   MX_TIM16_Init();
   MX_TIM17_Init();
-  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
-  
+
   // 启动TIM14 PWM输出 (LEDA)
   HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
+  
+  // 启动TIM17 PWM输出 (LEDB)
+  HAL_TIM_PWM_Start(&htim17, TIM_CHANNEL_1);
   
   // 初始化完成后直接进入微光模式
   SetLightDim();
@@ -131,7 +134,7 @@ if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
   
   // 启动串口接收
   HAL_UART_Receive_IT(&huart1, &rxBuffer[rxIndex], 1);
-/* USER CODE END 2 */
+  /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -479,9 +482,10 @@ void CancelAlarm(void) {
   * @retval None
   */
 void EnterStandbyMode(void) {
-  // 关闭所有外设
+// 关闭所有外设
   HAL_TIM_PWM_Stop(&htim14, TIM_CHANNEL_1);
-  
+  HAL_TIM_PWM_Stop(&htim17, TIM_CHANNEL_1);
+
   // 清除所有挂起的中断
   __HAL_RCC_CLEAR_RESET_FLAGS();
   __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1 | PWR_FLAG_WUF2 | PWR_FLAG_WUF4 | PWR_FLAG_WUF6 | PWR_FLAG_SB);
@@ -505,7 +509,8 @@ void EnterStandbyMode(void) {
   */
 void SetLightDim(void) {
   // 设置PWM占空比为10% (周期为1600，10%为160)
-  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 160);
+  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);  // LEDA 10%
+  __HAL_TIM_SET_COMPARE(&htim17, TIM_CHANNEL_1, 100);// LEDB 10%
 }
 
 /**
@@ -515,6 +520,7 @@ void SetLightDim(void) {
 void SetLightBright(void) {
   // 设置PWM占空比为50% (周期为1600，50%为800)
   __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 800);
+  __HAL_TIM_SET_COMPARE(&htim17, TIM_CHANNEL_1, 160);
 }
 
 /**
@@ -523,7 +529,7 @@ void SetLightBright(void) {
   */
 void TurnOffLight(void) {
   // 设置PWM占空比为0%
-  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
+  __HAL_TIM_SET_COMPARE(&htim17, TIM_CHANNEL_1, 0);
 }
 
 /* USER CODE END 4 */
