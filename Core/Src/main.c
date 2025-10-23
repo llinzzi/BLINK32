@@ -76,6 +76,7 @@ void SetSystemDate(char* dateStr);
 // 添加闹铃处理函数声明
 void SetAlarmTime(char* alarmStr);
 void CancelAlarm(void);
+void PlayBeepSound(void); 
 /* USER CODE END 0 */
 
 /**
@@ -126,7 +127,11 @@ if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
   
   // 启动TIM17 PWM输出 (LEDB)
   HAL_TIM_PWM_Start(&htim17, TIM_CHANNEL_1);
-  
+
+  // 启动TIM16 PWM输出 (蜂鸣器)
+  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+
   // 初始化完成后直接进入微光模式
   SetLightDim();
   lightState = LIGHT_DIM;
@@ -154,11 +159,6 @@ if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
       HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
       HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
       
-      // // 在主循环中添加简单的测试代码
-      // char testStr1[] = "Hello World\r\n";
-      // HAL_UART_Transmit(&huart1, (uint8_t*)testStr1, strlen(testStr1), HAL_MAX_DELAY);
-      // HAL_Delay(1000);
-
       // 格式化时间字符串
       char timeStr[50];
       sprintf(timeStr, "%02d:%02d:%02d\r\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
@@ -320,6 +320,11 @@ void ProcessSerialCommand(char* command) {
   } else if(strncmp(command, "ALARM=", 6) == 0) {
     // 设置闹铃命令，格式为 ALARM=HH:MM:SS 或 ALARM=OFF
     SetAlarmTime(command+6);
+  } else if(strcmp(command, "BEEP=1") == 0) {
+    // 播放提示音命令
+    PlayBeepSound();
+    char successMsg[] = "Beep sound played\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
   } else {
     // 未知命令，返回错误信息
     char errorMsg[] = "ERROR: Unknown command\r\n";
@@ -530,6 +535,51 @@ void SetLightBright(void) {
 void TurnOffLight(void) {
   // 设置PWM占空比为0%
   __HAL_TIM_SET_COMPARE(&htim17, TIM_CHANNEL_1, 0);
+}
+
+/**
+  * @brief  播放提示音
+  * @retval None
+  */
+void PlayBeepSound(void) {
+
+  
+  // 播放一个非常柔和、缓慢的提示音
+  // 音符1: 很低的音调
+  htim16.Init.Prescaler = 9;     // 更高的预分频器
+  htim16.Init.Period = 3999;     // 更大的周期值，产生约666Hz的频率
+  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
+    Error_Handler();
+  }
+  
+  // 设置20%占空比 (非常柔和的声音)
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 800);
+  
+  // 持续800ms
+  HAL_Delay(800);
+  
+  // 音符2: 稍高一点的音调
+  htim16.Init.Period = 2999;     // 周期值，产生约890Hz的频率
+  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
+    Error_Handler();
+  }
+  
+  // 设置25%占空比
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 750);
+  
+  // 持续600ms
+  HAL_Delay(600);
+  
+  // 确保完全关闭蜂鸣器
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+  
+
+  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
+    Error_Handler();
+  }
+  
+  // 短暂延时确保声音完全停止
+  HAL_Delay(100);
 }
 
 /* USER CODE END 4 */
