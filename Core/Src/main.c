@@ -73,6 +73,9 @@ void SystemClock_Config(void);
 void ProcessSerialCommand(char* command);
 void SetSystemTime(char* timeStr);
 void SetSystemDate(char* dateStr);
+// 添加闹铃处理函数声明
+void SetAlarmTime(char* alarmStr);
+void CancelAlarm(void);
 /* USER CODE END 0 */
 
 /**
@@ -311,6 +314,9 @@ void ProcessSerialCommand(char* command) {
   } else if(strncmp(command, "DATE=", 5) == 0) {
     // 设置日期命令，格式为 DATE=YYYY-MM-DD
     SetSystemDate(command+5);
+  } else if(strncmp(command, "ALARM=", 6) == 0) {
+    // 设置闹铃命令，格式为 ALARM=HH:MM:SS 或 ALARM=OFF
+    SetAlarmTime(command+6);
   } else {
     // 未知命令，返回错误信息
     char errorMsg[] = "ERROR: Unknown command\r\n";
@@ -396,6 +402,74 @@ void SetSystemDate(char* dateStr) {
     }
   } else {
     char errorMsg[] = "ERROR: Invalid date format\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+  }
+}
+
+/**
+  * @brief  设置闹铃时间
+  * @param  alarmStr 闹铃字符串，格式为 HH:MM:SS 或 OFF
+  * @retval None
+  */
+void SetAlarmTime(char* alarmStr) {
+  // 检查是否为取消闹铃命令
+  if(strcmp(alarmStr, "OFF") == 0) {
+    // 取消闹铃
+    CancelAlarm();
+    return;
+  }
+  
+  int hours, minutes, seconds;
+  
+  // 解析时间字符串
+  if(sscanf(alarmStr, "%d:%d:%d", &hours, &minutes, &seconds) == 3) {
+    // 验证时间有效性
+    if(hours >= 0 && hours <= 23 && 
+       minutes >= 0 && minutes <= 59 && 
+       seconds >= 0 && seconds <= 59) {
+       
+      // 设置RTC闹铃
+      RTC_AlarmTypeDef sAlarm;
+      sAlarm.AlarmTime.Hours = hours;
+      sAlarm.AlarmTime.Minutes = minutes;
+      sAlarm.AlarmTime.Seconds = seconds;
+      sAlarm.AlarmTime.SubSeconds = 0;
+      sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+      sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
+      sAlarm.AlarmMask = RTC_ALARMMASK_NONE;
+      sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
+      sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
+      sAlarm.AlarmDateWeekDay = 0x1;
+      sAlarm.Alarm = RTC_ALARM_A;
+      
+      if(HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN) == HAL_OK) {
+        char successMsg[] = "Alarm set successfully\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
+      } else {
+        char errorMsg[] = "ERROR: Failed to set alarm\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+      }
+    } else {
+      char errorMsg[] = "ERROR: Invalid alarm time format\r\n";
+      HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+    }
+  } else {
+    char errorMsg[] = "ERROR: Invalid alarm format\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+  }
+}
+
+/**
+  * @brief  取消闹铃
+  * @retval None
+  */
+void CancelAlarm(void) {
+  // 取消RTC闹铃
+  if(HAL_RTC_DeactivateAlarm(&hrtc, RTC_ALARM_A) == HAL_OK) {
+    char successMsg[] = "Alarm cancelled successfully\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
+  } else {
+    char errorMsg[] = "ERROR: Failed to cancel alarm\r\n";
     HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
   }
 }
