@@ -105,11 +105,7 @@ if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
   // 从Standby模式唤醒，清除Standby标志
   __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
   // 从STANDBY模式唤醒，RTC配置应该仍然有效
-  // 不需要重新初始化RTC时间和日期
-} else {
-  // 系统首次启动或复位，需要初始化RTC
-  MX_RTC_Init();
-}
+} 
 
   /* USER CODE END SysInit */
 
@@ -119,6 +115,7 @@ if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
   MX_USART1_UART_Init();
   MX_TIM16_Init();
   MX_TIM17_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
   
   // 启动TIM14 PWM输出 (LEDA)
