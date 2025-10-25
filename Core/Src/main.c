@@ -109,6 +109,7 @@ if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
   // 从Standby模式唤醒，清除Standby标志
   __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
   // 从STANDBY模式唤醒，RTC配置应该仍然有效
+
 } 
 
   /* USER CODE END SysInit */
@@ -503,6 +504,10 @@ void EnterStandbyMode(void) {
 
   // 使能唤醒引脚 (PA0)
   HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
+  
+  // 使能RTC闹铃唤醒
+  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN4_HIGH);
+  
   // 发送进入待机模式的消息
   char standbyMsg[] = "Entering Standby Mode...\r\n";
   HAL_UART_Transmit(&huart1, (uint8_t*)standbyMsg, strlen(standbyMsg), HAL_MAX_DELAY);
@@ -606,6 +611,7 @@ char* GetAlarmStatus(void) {
     return "OFF";
   }
 }
+
 
 /* USER CODE END 4 */
 
