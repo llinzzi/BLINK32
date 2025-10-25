@@ -71,6 +71,7 @@ void EnterStandbyMode(void);
 void SetLightDim(void);
 void SetLightBright(void);
 void TurnOffLight(void);
+char* GetAlarmStatus(void);  // 添加获取闹铃状态的函数声明
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

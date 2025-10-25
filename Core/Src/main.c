@@ -159,11 +159,17 @@ if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
       HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
       HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
       
-      // 格式化时间字符串
-      char timeStr[50];
-      sprintf(timeStr, "%02d:%02d:%02d\r\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
+      // 获取闹铃状态
+      char* alarmStatus = GetAlarmStatus();
       
-      // 通过串口打印时间
+      // 格式化时间字符串，包含日期和闹铃信息
+      char timeStr[100];
+      sprintf(timeStr, "%04d-%02d-%02d %02d:%02d:%02d ALARM:%s\r\n", 
+              2000 + sDate.Year, sDate.Month, sDate.Date,
+              sTime.Hours, sTime.Minutes, sTime.Seconds,
+              alarmStatus);
+      
+      // 通过串口打印时间、日期和闹铃信息
       HAL_UART_Transmit(&huart1, (uint8_t*)timeStr, strlen(timeStr), HAL_MAX_DELAY);
       
 
@@ -580,6 +586,25 @@ void PlayBeepSound(void) {
   
   // 短暂延时确保声音完全停止
   HAL_Delay(100);
+}
+
+/**
+  * @brief  获取闹铃状态
+  * @retval 闹铃状态字符串
+  */
+char* GetAlarmStatus(void) {
+  RTC_AlarmTypeDef sAlarm;
+  static char alarmStr[20];
+  
+  // 尝试获取闹铃信息
+  if (HAL_RTC_GetAlarm(&hrtc, &sAlarm, RTC_ALARM_A, RTC_FORMAT_BIN) == HAL_OK) {
+    // 如果闹铃已设置，返回闹铃时间
+    sprintf(alarmStr, "%02d:%02d:%02d", sAlarm.AlarmTime.Hours, sAlarm.AlarmTime.Minutes, sAlarm.AlarmTime.Seconds);
+    return alarmStr;
+  } else {
+    // 如果闹铃未设置或获取失败，返回OFF
+    return "OFF";
+  }
 }
 
 /* USER CODE END 4 */
