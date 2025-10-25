@@ -60,13 +60,13 @@ void MX_RTC_Init(void)
 
   /* USER CODE BEGIN Check_RTC_BKUP */
   // 检查RTC备份域是否已被配置
-  if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) == 0x32F2) {
+  if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) == 0x32F3) {
     // 从STANDBY模式唤醒，RTC配置仍然有效，不需要重新初始化时间
     return;
   } else {
     // 首次配置RTC或备份数据丢失
     // 标记RTC已配置
-    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, 0x32F2);
+    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, 0x32F3);
   }
   /* USER CODE END Check_RTC_BKUP */
 
@@ -111,6 +111,10 @@ void MX_RTC_Init(void)
   }
   /* USER CODE BEGIN RTC_Init 2 */
   // 不再默认设置闹铃，闹铃将通过串口命令设置
+  
+  // 确保使能RTC闹铃中断
+  HAL_NVIC_SetPriority(RTC_TAMP_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(RTC_TAMP_IRQn);
   /* USER CODE END RTC_Init 2 */
 
 }
@@ -169,5 +173,19 @@ void HAL_RTC_MspDeInit(RTC_HandleTypeDef* rtcHandle)
 }
 
 /* USER CODE BEGIN 1 */
+/**
+  * @brief  Alarm A callback.
+  * @param  hrtc RTC handle
+  * @retval None
+  */
+void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
+{
+  // 闹铃触发，播放提示音
+  // 注意：在中断回调中不能直接调用PlayBeepSound，需要通过标志位在主循环中处理
+  // 这里我们只打印一条消息到串口
+  // char alarmMsg[] = "RTC Alarm Triggered\r\n";
+  // 注意：在中断中使用HAL_UART_Transmit可能会有问题，这里仅作示例
+  // 实际应用中应该使用标志位在主循环中处理
+}
 
 /* USER CODE END 1 */
