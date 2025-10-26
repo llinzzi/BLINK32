@@ -59,6 +59,16 @@ uint32_t lastPrintTime = 0;
 // 添加串口接收相关变量
 uint8_t rxBuffer[50];  // 接收缓冲区
 uint8_t rxIndex = 0;   // 接收索引
+
+typedef enum {
+  WAKEUP_SOURCE_RESET = 0,
+  WAKEUP_SOURCE_BUTTON,
+  WAKEUP_SOURCE_ALARM
+} WakeupSourceTypeDef;
+
+WakeupSourceTypeDef wakeupSource = WAKEUP_SOURCE_RESET;
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -104,13 +114,28 @@ int main(void)
 
   /* USER CODE BEGIN SysInit */
 
-// 检查是否从Standby模式唤醒
-if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
-  // 从Standby模式唤醒，清除Standby标志
-  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
-  // 从STANDBY模式唤醒，RTC配置应该仍然有效
+// 检查唤醒源
+  if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
+    // 从Standby模式唤醒
+    if (__HAL_PWR_GET_FLAG(PWR_FLAG_WUF1) != RESET) {
+      // 按键唤醒 (WKUP1 - PA0)
+      wakeupSource = WAKEUP_SOURCE_BUTTON;
+      __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
+    } else if (__HAL_PWR_GET_FLAG(PWR_FLAG_WUF4) != RESET) {
+      // RTC闹铃唤醒 (WKUP4)
+      wakeupSource = WAKEUP_SOURCE_ALARM;
+      __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF4);
+    } else {
+      // 其他唤醒源
+      wakeupSource = WAKEUP_SOURCE_RESET;
+    }
+    // 清除Standby标志
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+  } else {
+    // 复位启动
+    wakeupSource = WAKEUP_SOURCE_RESET;
+  }
 
-} 
 
   /* USER CODE END SysInit */
 

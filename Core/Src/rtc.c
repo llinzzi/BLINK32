@@ -60,13 +60,13 @@ void MX_RTC_Init(void)
 
   /* USER CODE BEGIN Check_RTC_BKUP */
   // 检查RTC备份域是否已被配置
-  if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) == 0x32F3) {
+  if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) == 0x32F1) {
     // 从STANDBY模式唤醒，RTC配置仍然有效，不需要重新初始化时间
     return;
   } else {
     // 首次配置RTC或备份数据丢失
     // 标记RTC已配置
-    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, 0x32F3);
+    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, 0x32F1);
   }
   /* USER CODE END Check_RTC_BKUP */
 
