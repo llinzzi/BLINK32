@@ -187,17 +187,32 @@ int main(void)
       
       // 获取闹铃状态
       char* alarmStatus = GetAlarmStatus();
+     // 根据唤醒源生成相应的字符串
+      char* wakeupSourceStr;
+      switch (wakeupSource) {
+        case WAKEUP_SOURCE_BUTTON:
+          wakeupSourceStr = "BUTTON";
+          break;
+        case WAKEUP_SOURCE_ALARM:
+          wakeupSourceStr = "ALARM";
+          break;
+        case WAKEUP_SOURCE_RESET:
+        default:
+          wakeupSourceStr = "RESET";
+          break;
+      }
       
       // 格式化时间字符串，包含日期和闹铃信息
-      char timeStr[100];
-      sprintf(timeStr, "%04d-%02d-%02d %02d:%02d:%02d ALARM:%s\r\n", 
+     char timeStr[120];
+     sprintf(timeStr, "%04d-%02d-%02d %02d:%02d:%02d ALARM:%s WAKEUP:%s\r\n", 
               2000 + sDate.Year, sDate.Month, sDate.Date,
               sTime.Hours, sTime.Minutes, sTime.Seconds,
-              alarmStatus);
+              alarmStatus, wakeupSourceStr);
       
       // 通过串口打印时间、日期和闹铃信息
       HAL_UART_Transmit(&huart1, (uint8_t*)timeStr, strlen(timeStr), HAL_MAX_DELAY);
       
+
 
 
       // 更新上次打印时间
