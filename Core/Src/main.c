@@ -593,17 +593,18 @@ void TurnOffLight(void) {
   * @retval None
   */
 void PlayBeepSound(void) {
-
+  // 确保蜂鸣器是启动的
+  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
   
-  // 播放一个非常柔和、缓慢的提示音
   // 音符1: 很低的音调
   htim16.Init.Prescaler = 9;     // 更高的预分频器
-  htim16.Init.Period = 3999;     // 更大的周期值，产生约666Hz的频率
+  htim16.Init.Period = 3999;     // 周期值，产生约666Hz的频率
   if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
     Error_Handler();
   }
+  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
   
-  // 设置20%占空比 (非常柔和的声音)
+  // 设置20%占空比 (非常柔和的声音) - 3999 * 0.2 = 799
   __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 800);
   
   // 持续800ms
@@ -614,20 +615,17 @@ void PlayBeepSound(void) {
   if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
     Error_Handler();
   }
+  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
   
-  // 设置25%占空比
+  // 设置25%占空比 - 2999 * 0.25 = 749
   __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 750);
   
   // 持续600ms
   HAL_Delay(600);
   
-  // 确保完全关闭蜂鸣器
+  // 停止蜂鸣器
   __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
-  
-
-  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
-    Error_Handler();
-  }
+  HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
   
   // 短暂延时确保声音完全停止
   HAL_Delay(100);
