@@ -121,10 +121,10 @@ int main(void)
       // 按键唤醒 (WKUP1 - PA0)
       wakeupSource = WAKEUP_SOURCE_BUTTON;
       __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
-    } else if (__HAL_PWR_GET_FLAG(PWR_FLAG_WUF4) != RESET) {
-      // RTC闹铃唤醒 (WKUP4)
+    } else if (__HAL_PWR_GET_FLAG(PWR_FLAG_WUFI) != RESET) {
+      // RTC闹铃唤醒 (内部唤醒线路)
       wakeupSource = WAKEUP_SOURCE_ALARM;
-      __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF4);
+      __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUFI);
     } else {
       // 其他唤醒源
       wakeupSource = WAKEUP_SOURCE_RESET;
@@ -540,13 +540,13 @@ void EnterStandbyMode(void) {
 
   // 清除所有挂起的中断
   __HAL_RCC_CLEAR_RESET_FLAGS();
-  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1 | PWR_FLAG_WUF2 | PWR_FLAG_WUF4 | PWR_FLAG_WUF6 | PWR_FLAG_SB);
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1 | PWR_FLAG_WUF2 | PWR_FLAG_WUFI | PWR_FLAG_WUF6 | PWR_FLAG_SB);
 
   // 使能唤醒引脚 (PA0)
   HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
   
-  // 使能RTC闹铃唤醒
-  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN4_HIGH);
+  // 注意: RTC闹铃唤醒不需要使能WKUP4引脚，它通过内部唤醒线路触发
+  // RTC闹铃配置已在rtc.c中通过HAL_RTC_SetAlarm_IT完成
   
   // 发送进入待机模式的消息
   char standbyMsg[] = "Entering Standby Mode...\r\n";
