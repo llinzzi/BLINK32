@@ -483,7 +483,7 @@ void SetAlarmTime(char* alarmStr) {
        minutes >= 0 && minutes <= 59 && 
        seconds >= 0 && seconds <= 59) {
        
-      // 设置RTC闹铃
+      // 设置RTC闹铃 - 使用星期模式实现每天重复
       RTC_AlarmTypeDef sAlarm;
       sAlarm.AlarmTime.Hours = hours;
       sAlarm.AlarmTime.Minutes = minutes;
@@ -493,8 +493,8 @@ void SetAlarmTime(char* alarmStr) {
       sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
       sAlarm.AlarmMask = RTC_ALARMMASK_NONE;
       sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
-      sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
-      sAlarm.AlarmDateWeekDay = 0x1;
+      sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_WEEKDAY;  // 改为星期模式
+      sAlarm.AlarmDateWeekDay = 0x1F;  // 周一到周五（工作日）：0x1F = 0b00011111
       sAlarm.Alarm = RTC_ALARM_A;
       
       if(HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN) == HAL_OK) {
