@@ -36,7 +36,6 @@ void MX_RTC_Init(void)
 
   RTC_TimeTypeDef sTime = {0};
   RTC_DateTypeDef sDate = {0};
-  RTC_AlarmTypeDef sAlarm = {0};
 
   /* USER CODE BEGIN RTC_Init 1 */
 
@@ -61,54 +60,63 @@ void MX_RTC_Init(void)
   /* USER CODE BEGIN Check_RTC_BKUP */
   // 检查RTC备份域是否已被配置
   if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) == 0x32F1) {
-    // 从STANDBY模式唤醒，RTC配置仍然有效，不需要重新初始化时间
-    return;
+    // 从STANDBY模式唤醒，RTC配置仍然有效，不需要重新初始化时间和日期
+    // 但需要继续执行后续代码，确保RTC中断等配置正常
+    // return; // 注释掉这行，避免跳过闹钟中断配置
   } else {
     // 首次配置RTC或备份数据丢失
     // 标记RTC已配置
     HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, 0x32F1);
   }
+  
+  // 根据备份标志决定是否设置时间和日期
+  uint32_t rtcConfigured = HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0);
   /* USER CODE END Check_RTC_BKUP */
 
   /** Initialize RTC and set the Time and Date
   */
-  sTime.Hours = 0x7;
-  sTime.Minutes = 0x59;
-  sTime.Seconds = 0x30;
-  sTime.SubSeconds = 0x0;
-  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
-  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
-  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sDate.WeekDay = RTC_WEEKDAY_MONDAY;
-  sDate.Month = RTC_MONTH_JANUARY;
-  sDate.Date = 0x1;
-  sDate.Year = 0x25;
+  // 只有首次配置或备份域丢失时才设置时间和日期
+  if (rtcConfigured != 0x32F1) {
+    sTime.Hours = 0x7;
+    sTime.Minutes = 0x59;
+    sTime.Seconds = 0x30;
+    sTime.SubSeconds = 0x0;
+    sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+    sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+    if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+    {
+      Error_Handler();
+    }
+    sDate.WeekDay = RTC_WEEKDAY_MONDAY;
+    sDate.Month = RTC_MONTH_JANUARY;
+    sDate.Date = 0x1;
+    sDate.Year = 0x25;
 
-  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
-  {
-    Error_Handler();
+    if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+    {
+      Error_Handler();
+    }
   }
 
   /** Enable the Alarm A
   */
-  sAlarm.AlarmTime.Hours = 0x8;
-  sAlarm.AlarmTime.Minutes = 0x0;
-  sAlarm.AlarmTime.Seconds = 0x0;
-  sAlarm.AlarmTime.SubSeconds = 0x0;
-  sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
-  sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
-  sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY;  // 忽略日期匹配,实现每日重复
-  sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
-  sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;  // 使用日期模式
-  sAlarm.AlarmDateWeekDay = 0x1;  // 设置为1日(由于掩码忽略此字段,实现每天触发)
-  sAlarm.Alarm = RTC_ALARM_A;
-  if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  // 注释掉默认闹钟设置，避免覆盖用户通过串口设置的闹钟
+  // 只在首次配置时设置默认闹钟（可选）
+  // sAlarm.AlarmTime.Hours = 0x8;
+  // sAlarm.AlarmTime.Minutes = 0x0;
+  // sAlarm.AlarmTime.Seconds = 0x0;
+  // sAlarm.AlarmTime.SubSeconds = 0x0;
+  // sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  // sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  // sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY;  // 忽略日期匹配,实现每日重复
+  // sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
+  // sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;  // 使用日期模式
+  // sAlarm.AlarmDateWeekDay = 0x1;  // 设置为1日(由于掩码忽略此字段,实现每天触发)
+  // sAlarm.Alarm = RTC_ALARM_A;
+  // if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
+  // {
+  //   Error_Handler();
+  // }
   /* USER CODE BEGIN RTC_Init 2 */
   // 不再默认设置闹铃，闹铃将通过串口命令设置
   
