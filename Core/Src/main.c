@@ -114,7 +114,19 @@ int main(void)
 
   /* USER CODE BEGIN SysInit */
 
-// 检查唤醒源
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_RTC_Init();
+  MX_TIM14_Init();
+  MX_USART1_UART_Init();
+  MX_TIM16_Init();
+  MX_TIM17_Init();
+  /* USER CODE BEGIN 2 */
+
+  // 检查唤醒源 - 必须在所有外设初始化完成后进行
   if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
     // 从Standby模式唤醒
     if (__HAL_PWR_GET_FLAG(PWR_FLAG_WUF1) != RESET) {
@@ -135,18 +147,6 @@ int main(void)
     // 复位启动
     wakeupSource = WAKEUP_SOURCE_RESET;
   }
-
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_RTC_Init();
-  MX_TIM14_Init();
-  MX_USART1_UART_Init();
-  MX_TIM16_Init();
-  MX_TIM17_Init();
-  /* USER CODE BEGIN 2 */
 
   // 启动TIM14 PWM输出 (LEDA)
   HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
@@ -483,7 +483,7 @@ void SetAlarmTime(char* alarmStr) {
        minutes >= 0 && minutes <= 59 && 
        seconds >= 0 && seconds <= 59) {
        
-      // 设置RTC闹铃 - 使用星期模式实现每天重复
+      // 设置RTC闹铃 - 使用日期模式实现每天重复
       RTC_AlarmTypeDef sAlarm;
       sAlarm.AlarmTime.Hours = hours;
       sAlarm.AlarmTime.Minutes = minutes;
@@ -491,10 +491,10 @@ void SetAlarmTime(char* alarmStr) {
       sAlarm.AlarmTime.SubSeconds = 0;
       sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
       sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
-      sAlarm.AlarmMask = RTC_ALARMMASK_NONE;
+      sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY;  // 忽略日期匹配,实现每日重复
       sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
-      sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_WEEKDAY;  // 改为星期模式
-      sAlarm.AlarmDateWeekDay = 0x1F;  // 周一到周五（工作日）：0x1F = 0b00011111
+      sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;  // 使用日期模式
+      sAlarm.AlarmDateWeekDay = 0x1;  // 设置为1日(由于掩码忽略此字段,实现每天触发)
       sAlarm.Alarm = RTC_ALARM_A;
       
       if(HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN) == HAL_OK) {

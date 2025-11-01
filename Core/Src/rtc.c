@@ -100,10 +100,10 @@ void MX_RTC_Init(void)
   sAlarm.AlarmTime.SubSeconds = 0x0;
   sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
   sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
-  sAlarm.AlarmMask = RTC_ALARMMASK_NONE;
+  sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY;  // 忽略日期匹配,实现每日重复
   sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
-  sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_WEEKDAY;  // 使用星期模式
-  sAlarm.AlarmDateWeekDay = 0x1F;  // 周一到周五（工作日）
+  sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;  // 使用日期模式
+  sAlarm.AlarmDateWeekDay = 0x1;  // 设置为1日(由于掩码忽略此字段,实现每天触发)
   sAlarm.Alarm = RTC_ALARM_A;
   if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
   {
@@ -180,12 +180,11 @@ void HAL_RTC_MspDeInit(RTC_HandleTypeDef* rtcHandle)
   */
 void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 {
-  // 闹铃触发，播放提示音
+  // 闹铃触发，清除RTC闹铃标志位
+  __HAL_RTC_ALARM_CLEAR_FLAG(hrtc, RTC_FLAG_ALRAF);
+  
   // 注意：在中断回调中不能直接调用PlayBeepSound，需要通过标志位在主循环中处理
-  // 这里我们只打印一条消息到串口
-  // char alarmMsg[] = "RTC Alarm Triggered\r\n";
-  // 注意：在中断中使用HAL_UART_Transmit可能会有问题，这里仅作示例
-  // 实际应用中应该使用标志位在主循环中处理
+  // 这里我们只清除标志位，确保下次闹铃能够正常触发
 }
 
 /* USER CODE END 1 */
