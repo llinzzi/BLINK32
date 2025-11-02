@@ -140,7 +140,7 @@ int main(void)
       __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUFI);
     } else {
       // 其他唤醒源
-      wakeupSource = WAKEUP_SOURCE_RESET;
+      wakeupSource = WAKEUP_SOURCE_OTHER;
     }
     // 清除Standby标志
     __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
@@ -216,9 +216,6 @@ int main(void)
       // 通过串口打印时间、日期和闹铃信息
       HAL_UART_Transmit(&huart1, (uint8_t*)timeStr, strlen(timeStr), HAL_MAX_DELAY);
       
-
-
-
       // 更新上次打印时间
       lastPrintTime = HAL_GetTick();
     }
