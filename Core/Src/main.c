@@ -63,7 +63,8 @@ uint8_t rxIndex = 0;   // 接收索引
 typedef enum {
   WAKEUP_SOURCE_RESET = 0,
   WAKEUP_SOURCE_BUTTON,
-  WAKEUP_SOURCE_ALARM
+  WAKEUP_SOURCE_ALARM,
+  WAKEUP_SOURCE_OTHER
 } WakeupSourceTypeDef;
 
 WakeupSourceTypeDef wakeupSource = WAKEUP_SOURCE_RESET;
@@ -195,6 +196,9 @@ int main(void)
           break;
         case WAKEUP_SOURCE_ALARM:
           wakeupSourceStr = "ALARM";
+          break;
+        case WAKEUP_SOURCE_OTHER:
+          wakeupSourceStr = "其他";
           break;
         case WAKEUP_SOURCE_RESET:
         default:
