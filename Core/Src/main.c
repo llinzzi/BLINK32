@@ -220,7 +220,7 @@ int main(void)
       lastPrintTime = HAL_GetTick();
     }
 
-    // 检查微光模式超时 (1分钟)
+    // 检查微光模式超时 (30分钟)
     if (lightState == LIGHT_DIM) {
       if ((HAL_GetTick() - dimStartTime) >= DIM_TIMEOUT_MS) {
         // 微光模式超时，关闭灯光并进入待机模式
@@ -231,13 +231,16 @@ int main(void)
     
     // 检查按键状态（软件轮询方式检测按键释放）
     if (buttonPressed) {
+      
       if (HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin) == GPIO_PIN_RESET) {
         // 按键已释放，处理按键事件
         buttonPressed = 0;
         uint32_t pressDuration = HAL_GetTick() - pressStartTime;
-        
+
+        uint32_t lightDuration  = HAL_GetTick() - dimStartTime;
         // 根据当前状态和按压时间处理按键事件
-        if (lightState == LIGHT_DIM && pressDuration <= SHORT_PRESS_MAX_MS) {
+        // 灯已经亮了超过 1 秒才允许处理，避免启动后 1 秒内的按键被响应。
+        if (lightState == LIGHT_DIM && pressDuration <= SHORT_PRESS_MAX_MS && lightDuration > 1000) {
           // 微光模式下按键 短按：关闭灯光并进入待机模式
           TurnOffLight();
           EnterStandbyMode();
