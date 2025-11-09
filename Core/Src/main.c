@@ -59,6 +59,7 @@ uint32_t lastPrintTime = 0;
 // 添加串口接收相关变量
 uint8_t rxBuffer[50];  // 接收缓冲区
 uint8_t rxIndex = 0;   // 接收索引
+volatile uint8_t playBeepFlag = 0;  // 蜂鸣器播放标志
 
 typedef enum {
   WAKEUP_SOURCE_RESET = 0,
@@ -176,6 +177,13 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
+    // 处理蜂鸣器播放标志
+    if (playBeepFlag) {
+      playBeepFlag = 0;
+      PlayBeepSound();
+      char successMsg[] = "Beep sound played\r\n";
+      HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
+    }
 
     // 每隔1秒打印系统时间（仅在非待机模式下）
     if ((HAL_GetTick() - lastPrintTime) >= 1000) {
@@ -372,9 +380,9 @@ void ProcessSerialCommand(char* command) {
     // 设置闹铃命令，格式为 ALARM=HH:MM:SS 或 ALARM=OFF
     SetAlarmTime(command+6);
   } else if(strcmp(command, "BEEP=1") == 0) {
-    // 播放提示音命令
-    PlayBeepSound();
-    char successMsg[] = "Beep sound played\r\n";
+    // 播放提示音命令 - 设置标志由主循环处理
+    playBeepFlag = 1;
+    char successMsg[] = "Beep command received\r\n";
     HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
   } else {
     // 未知命令，返回错误信息
