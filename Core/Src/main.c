@@ -601,46 +601,62 @@ void TurnOffLight(void) {
 }
 
 /**
-  * @brief  播放提示音
+  * @brief  播放提示音 - 温柔的早起闹铃音(2秒)
   * @retval None
   */
 void PlayBeepSound(void) {
   // 确保蜂鸣器是启动的
   HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
   
-  // 音符1: 很低的音调
-  htim16.Init.Prescaler = 9;     // 更高的预分频器
-  htim16.Init.Period = 3999;     // 周期值，产生约666Hz的频率
+  // 音符1: C5 (523Hz) - 温柔的起始音
+  htim16.Init.Prescaler = 15;    
+  htim16.Init.Period = 3999;     // 约523Hz
   if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
     Error_Handler();
   }
   HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 800);  // 20%占空比
+  HAL_Delay(400);
   
-  // 设置20%占空比 (非常柔和的声音) - 3999 * 0.2 = 799
-  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 800);
-  
-  // 持续800ms
-  HAL_Delay(800);
-  
-  // 音符2: 稍高一点的音调
-  htim16.Init.Period = 2999;     // 周期值，产生约890Hz的频率
+  // 音符2: E5 (659Hz) - 稍微提升
+  htim16.Init.Period = 3179;     // 约659Hz
   if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
     Error_Handler();
   }
   HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 795);  // 25%占空比
+  HAL_Delay(400);
   
-  // 设置25%占空比 - 2999 * 0.25 = 749
-  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 750);
+  // 音符3: G5 (784Hz) - 继续上升
+  htim16.Init.Period = 2672;     // 约784Hz
+  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
+    Error_Handler();
+  }
+  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 801);  // 30%占空比
+  HAL_Delay(400);
   
-  // 持续600ms
+  // 音符4: C6 (1047Hz) - 温柔的高音结束
+  htim16.Init.Period = 1999;     // 约1047Hz
+  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
+    Error_Handler();
+  }
+  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 700);  // 35%占空比
   HAL_Delay(600);
+  
+  // 音符5: G5 (784Hz) - 柔和收尾
+  htim16.Init.Period = 2672;     
+  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
+    Error_Handler();
+  }
+  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 534);  // 20%占空比
+  HAL_Delay(200);
   
   // 停止蜂鸣器
   __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
   HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
-  
-  // 短暂延时确保声音完全停止
-  HAL_Delay(100);
 }
 
 /**
