@@ -605,58 +605,48 @@ void TurnOffLight(void) {
   * @retval None
   */
 void PlayBeepSound(void) {
-  // 确保蜂鸣器是启动的
-  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
-  
-  // 音符1: C5 (523Hz) - 温柔的起始音
-  htim16.Init.Prescaler = 15;    
-  htim16.Init.Period = 3999;     // 约523Hz
-  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
-    Error_Handler();
+  // 音符表: {周期值, 占空比}
+  // APB频率64MHz, 周期 = 64000000 / 频率 - 1
+  typedef struct {
+    uint32_t period;
+    uint32_t duty;
+  } Note;
+  Note notes[] = {
+    {3999, 800},    // C5 (523Hz) - 20%占空比
+    {3179, 795},    // E5 (659Hz) - 25%占空比
+    {2672, 801},    // G5 (784Hz) - 30%占空比
+    {1999, 700},    // C6 (1047Hz) - 35%占空比
+    {2672, 534},    // G5 (784Hz) - 20%占空比
+  };
+  uint16_t delays[] = {400, 400, 400, 600, 200};
+
+  // 播放旋律
+  for (int i = 0; i < 5; i++) {
+    // 停止PWM
+    HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
+
+    // 修改周期
+    htim16.Init.Period = notes[i].period;
+
+    // 重新初始化（仅修改Period，不需要重新配置所有通道）
+    if (HAL_TIM_Base_Init(&htim16) != HAL_OK) {
+      return;
+    }
+    if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
+      return;
+    }
+
+    // 设置占空比并启动
+    __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, notes[i].duty);
+    HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+
+    // 延时
+    HAL_Delay(delays[i]);
   }
-  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
-  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 800);  // 20%占空比
-  HAL_Delay(400);
-  
-  // 音符2: E5 (659Hz) - 稍微提升
-  htim16.Init.Period = 3179;     // 约659Hz
-  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
-    Error_Handler();
-  }
-  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
-  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 795);  // 25%占空比
-  HAL_Delay(400);
-  
-  // 音符3: G5 (784Hz) - 继续上升
-  htim16.Init.Period = 2672;     // 约784Hz
-  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
-    Error_Handler();
-  }
-  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
-  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 801);  // 30%占空比
-  HAL_Delay(400);
-  
-  // 音符4: C6 (1047Hz) - 温柔的高音结束
-  htim16.Init.Period = 1999;     // 约1047Hz
-  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
-    Error_Handler();
-  }
-  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
-  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 700);  // 35%占空比
-  HAL_Delay(600);
-  
-  // 音符5: G5 (784Hz) - 柔和收尾
-  htim16.Init.Period = 2672;     
-  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
-    Error_Handler();
-  }
-  HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
-  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 534);  // 20%占空比
-  HAL_Delay(200);
-  
+
   // 停止蜂鸣器
-  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
   HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
 }
 
 /**

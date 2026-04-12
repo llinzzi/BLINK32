@@ -156,6 +156,9 @@ void HAL_RTC_MspDeInit(RTC_HandleTypeDef* rtcHandle)
 }
 
 /* USER CODE BEGIN 1 */
+// 声明蜂鸣器标志位（定义在main.c中）
+extern volatile uint8_t playBeepFlag;
+
 /**
   * @brief  Alarm A callback.
   * @param  hrtc RTC handle
@@ -165,9 +168,9 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 {
   // 闹铃触发，清除RTC闹铃标志位
   __HAL_RTC_ALARM_CLEAR_FLAG(hrtc, RTC_FLAG_ALRAF);
-  
-  // 注意：在中断回调中不能直接调用PlayBeepSound，需要通过标志位在主循环中处理
-  // 这里我们只清除标志位，确保下次闹铃能够正常触发
+
+  // 设置蜂鸣器播放标志，由主循环处理
+  playBeepFlag = 1;
 }
 
 /* USER CODE END 1 */
