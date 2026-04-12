@@ -158,6 +158,8 @@ void HAL_RTC_MspDeInit(RTC_HandleTypeDef* rtcHandle)
 /* USER CODE BEGIN 1 */
 // 声明蜂鸣器标志位（定义在main.c中）
 extern volatile uint8_t playBeepFlag;
+// 闹钟唤醒标志 - 通知main.c这是闹钟唤醒
+extern volatile uint8_t alarmWakeup;
 
 /**
   * @brief  Alarm A callback.
@@ -166,10 +168,10 @@ extern volatile uint8_t playBeepFlag;
   */
 void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
 {
-  // 闹铃触发，清除RTC闹铃标志位
-  __HAL_RTC_ALARM_CLEAR_FLAG(hrtc, RTC_FLAG_ALRAF);
+  // 设置闹钟唤醒标志，由主循环处理
+  alarmWakeup = 1;
 
-  // 设置蜂鸣器播放标志，由主循环处理
+  // 设置蜂鸣器播放标志
   playBeepFlag = 1;
 }
 

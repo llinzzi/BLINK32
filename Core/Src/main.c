@@ -59,6 +59,7 @@ uint32_t lastPrintTime = 0;
 uint8_t rxBuffer[50];  // 接收缓冲区
 uint8_t rxIndex = 0;   // 接收索引
 volatile uint8_t playBeepFlag = 0;  // 蜂鸣器播放标志
+volatile uint8_t alarmWakeup = 0;     // 闹钟唤醒标志
 
 typedef enum {
   WAKEUP_SOURCE_RESET = 0,
@@ -189,14 +190,15 @@ int main(void)
   // 检查唤醒源 - 必须在所有外设初始化完成后进行
   if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
     // 从Standby模式唤醒
-    if (__HAL_PWR_GET_FLAG(PWR_FLAG_WUF1) != RESET) {
+    // 先检查闹钟唤醒标志（在RTC中断中设置）
+    if (alarmWakeup) {
+      // RTC闹钟唤醒
+      wakeupSource = WAKEUP_SOURCE_ALARM;
+      alarmWakeup = 0;
+    } else if (__HAL_PWR_GET_FLAG(PWR_FLAG_WUF1) != RESET) {
       // 按键唤醒 (WKUP1 - PA0)
       wakeupSource = WAKEUP_SOURCE_BUTTON;
       __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
-    } else if (__HAL_PWR_GET_FLAG(PWR_FLAG_WUFI) != RESET) {
-      // RTC闹铃唤醒 (内部唤醒线路)
-      wakeupSource = WAKEUP_SOURCE_ALARM;
-      __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUFI);
     } else {
       // 其他唤醒源
       wakeupSource = WAKEUP_SOURCE_OTHER;
@@ -235,12 +237,10 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-    // 处理蜂鸣器播放标志
-    if (playBeepFlag) {
+    // 处理蜂鸣器播放标志 - 仅当闹钟唤醒时才播放
+    if (playBeepFlag && wakeupSource == WAKEUP_SOURCE_ALARM) {
       playBeepFlag = 0;
       PlayBeepSound();
-      char successMsg[] = "Beep sound played\r\n";
-      HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
     }
 
     // 每隔1秒打印系统时间（仅在非待机模式下）
@@ -264,7 +264,7 @@ int main(void)
           wakeupSourceStr = "ALARM";
           break;
         case WAKEUP_SOURCE_OTHER:
-          wakeupSourceStr = "其他";
+          wakeupSourceStr = "OTHER";
           break;
         case WAKEUP_SOURCE_RESET:
         default:
@@ -635,23 +635,26 @@ void EnterStandbyMode(void) {
   HAL_TIM_PWM_Stop(&htim14, TIM_CHANNEL_1);
   HAL_TIM_PWM_Stop(&htim17, TIM_CHANNEL_1);
 
+  // 清除RTC闹钟标志，以便下次闹钟能正常触发
+  __HAL_RTC_ALARM_CLEAR_FLAG(&hrtc, RTC_FLAG_ALRAF);
+
   // 清除所有挂起的中断
   __HAL_RCC_CLEAR_RESET_FLAGS();
   __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1 | PWR_FLAG_WUF2 | PWR_FLAG_WUFI | PWR_FLAG_WUF6 | PWR_FLAG_SB);
 
   // 使能唤醒引脚 (PA0)
   HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
-  
+
   // 注意: RTC闹铃唤醒不需要使能WKUP4引脚，它通过内部唤醒线路触发
   // RTC闹铃配置已在rtc.c中通过HAL_RTC_SetAlarm_IT完成
-  
+
   // 发送进入待机模式的消息
   char standbyMsg[] = "Entering Standby Mode...\r\n";
   HAL_UART_Transmit(&huart1, (uint8_t*)standbyMsg, strlen(standbyMsg), HAL_MAX_DELAY);
-  
+
   // 重置时间打印变量
   lastPrintTime = 0;
-  
+
   // // 进入Standby模式
   HAL_PWR_EnterSTANDBYMode();
 }
@@ -686,47 +689,56 @@ void TurnOffLight(void) {
 }
 
 /**
-  * @brief  播放提示音 - 温柔的早起闹铃音(2秒)
+  * @brief  播放提示音 - 柔和的早起闹铃音
   * @retval None
   */
 void PlayBeepSound(void) {
-  // 音符表: {周期值, 占空比}
-  // APB频率64MHz, 周期 = 64000000 / 频率 - 1
+  // APB1 = 16MHz
+  // 频率 = 16000000 / (Period + 1) / (Prescaler + 1)
+  // 设置Prescaler=15得到1MHz计数频率
+  // 周期表: C4=262Hz, D4=294Hz, E4=330Hz, G4=392Hz, A4=440Hz, C5=523Hz
+
   typedef struct {
-    uint32_t period;
-    uint32_t duty;
+    uint32_t period;    // ARR值
+    uint16_t delay;     // 延时ms
   } Note;
-  Note notes[] = {
-    {3999, 800},    // C5 (523Hz) - 20%占空比
-    {3179, 795},    // E5 (659Hz) - 25%占空比
-    {2672, 801},    // G5 (784Hz) - 30%占空比
-    {1999, 700},    // C6 (1047Hz) - 35%占空比
-    {2672, 534},    // G5 (784Hz) - 20%占空比
+  Note melody[] = {
+    {3816, 300},   // A4 (440Hz) - 轻柔的开始
+    {4545, 200},   // G4 (392Hz) - 轻轻下落
+    {0, 150},      // 休止
+    {3816, 300},   // A4 (440Hz) - 再次响起
+    {4545, 200},   // G4 (392Hz)
+    {0, 150},      // 休止
+    {3033, 400},   // C5 (523Hz) - 稍高一些
+    {4545, 300},   // G4 (392Hz) - 柔和收尾
+    {0, 200},      // 休止
+    {3033, 300},   // C5 (523Hz)
+    {3816, 300},   // A4 (440Hz)
+    {4545, 400},   // G4 (392Hz)
   };
-  uint16_t delays[] = {400, 400, 400, 600, 200};
+
+  // 配置定时器基础参数
+  htim16.Init.Prescaler = 15;   // 16MHz / 16 = 1MHz
+  htim16.Init.Period = melody[0].period;
+  htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim16.Init.RepetitionCounter = 0;
+  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+
+  if (HAL_TIM_Base_Init(&htim16) != HAL_OK) return;
+  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) return;
 
   // 播放旋律
-  for (int i = 0; i < 5; i++) {
-    // 停止PWM
-    HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
-
-    // 修改周期
-    htim16.Init.Period = notes[i].period;
-
-    // 重新初始化（仅修改Period，不需要重新配置所有通道）
-    if (HAL_TIM_Base_Init(&htim16) != HAL_OK) {
-      return;
+  for (int i = 0; i < 12; i++) {
+    if (melody[i].period == 0) {
+      // 休止符 - 关闭声音
+      __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+    } else {
+      // 设置频率和占空比(30%)
+      __HAL_TIM_SET_AUTORELOAD(&htim16, melody[i].period);
+      __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, melody[i].period * 30 / 100);
+      HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
     }
-    if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) {
-      return;
-    }
-
-    // 设置占空比并启动
-    __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, notes[i].duty);
-    HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
-
-    // 延时
-    HAL_Delay(delays[i]);
+    HAL_Delay(melody[i].delay);
   }
 
   // 停止蜂鸣器
