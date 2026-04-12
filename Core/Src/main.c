@@ -26,7 +26,6 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
-#include <stdio.h>
 #include <stdlib.h>
 /* USER CODE END Includes */
 
@@ -88,7 +87,66 @@ void SetSystemDate(char* dateStr);
 // 添加闹铃处理函数声明
 void SetAlarmTime(char* alarmStr);
 void CancelAlarm(void);
-void PlayBeepSound(void); 
+void PlayBeepSound(void);
+
+// 轻量级字符串格式化辅助函数
+static inline void append2digits(char* buf, int val) {
+  buf[0] = (val / 10) + '0';
+  buf[1] = (val % 10) + '0';
+  buf[2] = '\0';
+}
+
+// 简单的字符串解析时间 (HH:MM:SS)，返回0成功，-1失败
+static inline int parseTime(const char* str, int* h, int* m, int* s) {
+  // 简单实现：查找冒号，atoi
+  const char* p = str;
+  char tmp[3] = {0};
+  // 解析小时
+  if (*p < '0' || *p > '9') return -1;
+  tmp[0] = *p++;
+  if (*p >= '0' && *p <= '9') tmp[1] = *p++;
+  *h = atoi(tmp);
+  if (*p != ':') return -1;
+  p++;
+  // 解析分钟
+  if (*p < '0' || *p > '9') return -1;
+  tmp[0] = *p++;
+  if (*p >= '0' && *p <= '9') tmp[1] = *p++;
+  *m = atoi(tmp);
+  if (*p != ':') return -1;
+  p++;
+  // 解析秒
+  if (*p < '0' || *p > '9') return -1;
+  tmp[0] = *p++;
+  if (*p >= '0' && *p <= '9') tmp[1] = *p++;
+  *s = atoi(tmp);
+  return 0;
+}
+
+// 简单的日期解析 (YYYY-MM-DD)
+static inline int parseDate(const char* str, int* y, int* m, int* d) {
+  const char* p = str;
+  char tmp[5] = {0};
+  // 解析年份4位
+  for (int i = 0; i < 4; i++) {
+    if (*p < '0' || *p > '9') return -1;
+    tmp[i] = *p++;
+  }
+  *y = atoi(tmp);
+  if (*p != '-') return -1;
+  p++;
+  // 解析月份2位
+  if (*p < '0' || *p > '9') return -1;
+  tmp[0] = *p++; tmp[1] = *p++; tmp[2] = '\0';
+  *m = atoi(tmp);
+  if (*p != '-') return -1;
+  p++;
+  // 解析日期2位
+  if (*p < '0' || *p > '9') return -1;
+  tmp[0] = *p++; tmp[1] = *p++; tmp[2] = '\0';
+  *d = atoi(tmp);
+  return 0;
+}
 /* USER CODE END 0 */
 
 /**
@@ -214,12 +272,39 @@ int main(void)
           break;
       }
       
-      // 格式化时间字符串，包含日期和闹铃信息
-     char timeStr[120];
-     sprintf(timeStr, "%04d-%02d-%02d %02d:%02d:%02d ALARM:%s WAKEUP:%s\r\n", 
-              2000 + sDate.Year, sDate.Month, sDate.Date,
-              sTime.Hours, sTime.Minutes, sTime.Seconds,
-              alarmStatus, wakeupSourceStr);
+      // 格式化时间字符串 (简化版，节省代码空间)
+      char timeStr[50];
+      char *p = timeStr;
+      // YYYY-MM-DD
+      *p++ = '2'; *p++ = '0';
+      *p++ = (sDate.Year / 10) + '0';
+      *p++ = (sDate.Year % 10) + '0';
+      *p++ = '-';
+      *p++ = (sDate.Month / 10) + '0';
+      *p++ = (sDate.Month % 10) + '0';
+      *p++ = '-';
+      *p++ = (sDate.Date / 10) + '0';
+      *p++ = (sDate.Date % 10) + '0';
+      *p++ = ' ';
+      // HH:MM:SS
+      *p++ = (sTime.Hours / 10) + '0';
+      *p++ = (sTime.Hours % 10) + '0';
+      *p++ = ':';
+      *p++ = (sTime.Minutes / 10) + '0';
+      *p++ = (sTime.Minutes % 10) + '0';
+      *p++ = ':';
+      *p++ = (sTime.Seconds / 10) + '0';
+      *p++ = (sTime.Seconds % 10) + '0';
+      *p++ = ' ';
+      // ALARM:status
+      strcpy(p, "ALARM:"); p += 6;
+      strcpy(p, alarmStatus); p += strlen(alarmStatus);
+      *p++ = ' ';
+      // WAKEUP:source
+      strcpy(p, "WAKEUP:"); p += 7;
+      strcpy(p, wakeupSourceStr); p += strlen(wakeupSourceStr);
+      *p++ = '\r'; *p++ = '\n';
+      *p = '\0';
       
       // 通过串口打印时间、日期和闹铃信息
       HAL_UART_Transmit(&huart1, (uint8_t*)timeStr, strlen(timeStr), HAL_MAX_DELAY);
@@ -398,14 +483,14 @@ void ProcessSerialCommand(char* command) {
   */
 void SetSystemTime(char* timeStr) {
   int hours, minutes, seconds;
-  
+
   // 解析时间字符串
-  if(sscanf(timeStr, "%d:%d:%d", &hours, &minutes, &seconds) == 3) {
+  if(parseTime(timeStr, &hours, &minutes, &seconds) == 0) {
     // 验证时间有效性
-    if(hours >= 0 && hours <= 23 && 
-       minutes >= 0 && minutes <= 59 && 
+    if(hours >= 0 && hours <= 23 &&
+       minutes >= 0 && minutes <= 59 &&
        seconds >= 0 && seconds <= 59) {
-       
+
       // 设置RTC时间
       RTC_TimeTypeDef sTime;
       sTime.Hours = hours;
@@ -413,7 +498,7 @@ void SetSystemTime(char* timeStr) {
       sTime.Seconds = seconds;
       sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
       sTime.StoreOperation = RTC_STOREOPERATION_RESET;
-      
+
       if(HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) == HAL_OK) {
         char successMsg[] = "Time set successfully\r\n";
         HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
@@ -422,11 +507,11 @@ void SetSystemTime(char* timeStr) {
         HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
       }
     } else {
-      char errorMsg[] = "ERROR: Invalid time format\r\n";
+      char errorMsg[] = "ERROR: Invalid time\r\n";
       HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
     }
   } else {
-    char errorMsg[] = "ERROR: Invalid time format\r\n";
+    char errorMsg[] = "ERROR: Invalid time\r\n";
     HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
   }
 }
@@ -438,37 +523,37 @@ void SetSystemTime(char* timeStr) {
   */
 void SetSystemDate(char* dateStr) {
   int year, month, day;
-  
+
   // 解析日期字符串
-  if(sscanf(dateStr, "%d:%d:%d", &year, &month, &day) == 3) {
+  if(parseDate(dateStr, &year, &month, &day) == 0) {
     // 验证日期有效性
-    if(year >= 2000 && year <= 2099 && 
-       month >= 1 && month <= 12 && 
+    if(year >= 2000 && year <= 2099 &&
+       month >= 1 && month <= 12 &&
        day >= 1 && day <= 31) {
-       
+
       // 转换年份为RTC格式 (0-99)
       year = year - 2000;
-       
+
       // 设置RTC日期
       RTC_DateTypeDef sDate;
       sDate.Year = year;
       sDate.Month = month;
       sDate.Date = day;
-      sDate.WeekDay = RTC_WEEKDAY_MONDAY; // 简单设置为周一，实际应该根据日期计算
-      
+      sDate.WeekDay = RTC_WEEKDAY_MONDAY;
+
       if(HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN) == HAL_OK) {
-        char successMsg[] = "Date set successfully\r\n";
+        char successMsg[] = "Date set OK\r\n";
         HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
       } else {
-        char errorMsg[] = "ERROR: Failed to set date\r\n";
+        char errorMsg[] = "ERROR: Set date\r\n";
         HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
       }
     } else {
-      char errorMsg[] = "ERROR: Invalid date format\r\n";
+      char errorMsg[] = "ERROR: Invalid date\r\n";
       HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
     }
   } else {
-    char errorMsg[] = "ERROR: Invalid date format\r\n";
+    char errorMsg[] = "ERROR: Invalid date\r\n";
     HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
   }
 }
@@ -485,16 +570,16 @@ void SetAlarmTime(char* alarmStr) {
     CancelAlarm();
     return;
   }
-  
+
   int hours, minutes, seconds;
-  
+
   // 解析时间字符串
-  if(sscanf(alarmStr, "%d:%d:%d", &hours, &minutes, &seconds) == 3) {
+  if(parseTime(alarmStr, &hours, &minutes, &seconds) == 0) {
     // 验证时间有效性
-    if(hours >= 0 && hours <= 23 && 
-       minutes >= 0 && minutes <= 59 && 
+    if(hours >= 0 && hours <= 23 &&
+       minutes >= 0 && minutes <= 59 &&
        seconds >= 0 && seconds <= 59) {
-       
+
       // 设置RTC闹铃 - 使用日期模式实现每天重复
       RTC_AlarmTypeDef sAlarm;
       sAlarm.AlarmTime.Hours = hours;
@@ -503,25 +588,25 @@ void SetAlarmTime(char* alarmStr) {
       sAlarm.AlarmTime.SubSeconds = 0;
       sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
       sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
-      sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY;  // 忽略日期匹配,实现每日重复
+      sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY;
       sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
-      sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;  // 使用日期模式
-      sAlarm.AlarmDateWeekDay = 0x1;  // 设置为1日(由于掩码忽略此字段,实现每天触发)
+      sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
+      sAlarm.AlarmDateWeekDay = 0x1;
       sAlarm.Alarm = RTC_ALARM_A;
-      
+
       if(HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN) == HAL_OK) {
-        char successMsg[] = "Alarm set successfully\r\n";
+        char successMsg[] = "Alarm set OK\r\n";
         HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
       } else {
-        char errorMsg[] = "ERROR: Failed to set alarm\r\n";
+        char errorMsg[] = "ERROR: Set alarm\r\n";
         HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
       }
     } else {
-      char errorMsg[] = "ERROR: Invalid alarm time format\r\n";
+      char errorMsg[] = "ERROR: Invalid alarm\r\n";
       HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
     }
   } else {
-    char errorMsg[] = "ERROR: Invalid alarm format\r\n";
+    char errorMsg[] = "ERROR: Invalid alarm\r\n";
     HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
   }
 }
@@ -655,12 +740,20 @@ void PlayBeepSound(void) {
   */
 char* GetAlarmStatus(void) {
   RTC_AlarmTypeDef sAlarm;
-  static char alarmStr[20];
-  
+  static char alarmStr[12];
+
   // 尝试获取闹铃信息
   if (HAL_RTC_GetAlarm(&hrtc, &sAlarm, RTC_ALARM_A, RTC_FORMAT_BIN) == HAL_OK) {
-    // 如果闹铃已设置，返回闹铃时间
-    sprintf(alarmStr, "%02d:%02d:%02d", sAlarm.AlarmTime.Hours, sAlarm.AlarmTime.Minutes, sAlarm.AlarmTime.Seconds);
+    // 如果闹铃已设置，返回闹铃时间 (HH:MM:SS)
+    alarmStr[0] = (sAlarm.AlarmTime.Hours / 10) + '0';
+    alarmStr[1] = (sAlarm.AlarmTime.Hours % 10) + '0';
+    alarmStr[2] = ':';
+    alarmStr[3] = (sAlarm.AlarmTime.Minutes / 10) + '0';
+    alarmStr[4] = (sAlarm.AlarmTime.Minutes % 10) + '0';
+    alarmStr[5] = ':';
+    alarmStr[6] = (sAlarm.AlarmTime.Seconds / 10) + '0';
+    alarmStr[7] = (sAlarm.AlarmTime.Seconds % 10) + '0';
+    alarmStr[8] = '\0';
     return alarmStr;
   } else {
     // 如果闹铃未设置或获取失败，返回OFF
