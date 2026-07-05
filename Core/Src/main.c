@@ -25,26 +25,18 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-typedef enum {
-  LED_OFF = 0,
-  LED_ON,
-  LED_ALARM  // 新增闹钟状态
-} LED_StateTypeDef;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define PWM_MAX_VALUE     1600
-#define PWM_STEP_SIZE     16
-#define DEBOUNCE_DELAY    50
-#define BEEP_DURATION     1000  // 1秒蜂鸣时间
-#define ALARM_FLASH_PERIOD 200  // 200ms闪烁周期
-#define BEEP_PWM_PERIOD   987   // TIM16周期值
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -53,231 +45,109 @@ typedef enum {
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+
 /* USER CODE BEGIN PV */
-LED_StateTypeDef led_state = LED_OFF;
-uint32_t pwm_value = 0;
-uint32_t last_button_check = 0;
-uint8_t button_prev_state = 1;  // Assume button is not pressed initially (pull-up)
-uint8_t beep_active = 0;
-uint32_t beep_start_time = 0;
-uint8_t alarm_active = 0;
-uint32_t alarm_flash_time = 0;
-uint8_t alarm_led_state = 0;
-uint8_t test_mode = 0;  // 测试模式标志
+// 灯光状态枚举
+LightStateTypeDef lightState = LIGHT_OFF;
+uint32_t pressStartTime = 0;
+uint32_t dimStartTime = 0;
+uint8_t buttonPressed = 0;
+// 添加时间打印相关变量
+uint32_t lastPrintTime = 0;
+
+// 添加串口接收相关变量
+uint8_t rxBuffer[50];  // 接收缓冲区
+uint8_t rxIndex = 0;   // 接收索引
+volatile uint8_t playBeepFlag = 0;  // 蜂鸣器播放标志
+volatile uint8_t alarmWakeup = 0;     // 闹钟唤醒标志
+uint8_t alarmEnabled = 0;             // 闹铃启用标志
+
+typedef enum {
+  WAKEUP_SOURCE_RESET = 0,
+  WAKEUP_SOURCE_BUTTON,
+  WAKEUP_SOURCE_ALARM,
+  WAKEUP_SOURCE_OTHER
+} WakeupSourceTypeDef;
+
+WakeupSourceTypeDef wakeupSource = WAKEUP_SOURCE_RESET;
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-void LED_Breathing_Control(void);
-void Button_Check(void);
-void Beep_Control(void);
-void Alarm_LED_Control(void);
-void Simple_Beep_Test(void);  // 添加简单测试函数
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-/**
-  * @brief  Simple beep test function
-  * @retval None
-  */
-void Simple_Beep_Test(void)
-{
-  // 直接控制GPIO测试蜂鸣器
-  HAL_GPIO_Init(BEEP_GPIO_Port, &(GPIO_InitTypeDef){
-    .Pin = BEEP_Pin,
-    .Mode = GPIO_MODE_OUTPUT_PP,
-    .Pull = GPIO_NOPULL,
-    .Speed = GPIO_SPEED_FREQ_LOW
-  });
-  
-  // 快速切换GPIO产生声音
-  for(int i = 0; i < 2700; i++) {
-    HAL_GPIO_WritePin(BEEP_GPIO_Port, BEEP_Pin, GPIO_PIN_SET);
-    for(volatile int j = 0; j < 1000; j++);  // 短延时
-    HAL_GPIO_WritePin(BEEP_GPIO_Port, BEEP_Pin, GPIO_PIN_RESET);
-    for(volatile int j = 0; j < 1000; j++);  // 短延时
-  }
-  
-  // 恢复为PWM模式
-  HAL_GPIO_Init(BEEP_GPIO_Port, &(GPIO_InitTypeDef){
-    .Pin = BEEP_Pin,
-    .Mode = GPIO_MODE_AF_PP,
-    .Pull = GPIO_NOPULL,
-    .Speed = GPIO_SPEED_FREQ_LOW,
-    .Alternate = GPIO_AF5_TIM16
-  });
+// 串口命令处理函数声明
+void ProcessSerialCommand(char* command);
+void SetSystemTime(char* timeStr);
+void SetSystemDate(char* dateStr);
+// 添加闹铃处理函数声明
+void SetAlarmTime(char* alarmStr);
+void CancelAlarm(void);
+void PlayBeepSound(void);
+
+// 轻量级字符串格式化辅助函数
+static inline void append2digits(char* buf, int val) {
+  buf[0] = (val / 10) + '0';
+  buf[1] = (val % 10) + '0';
+  buf[2] = '\0';
 }
 
-/**
-  * @brief  Alarm callback in non-blocking mode
-  * @param  hrtc: RTC handle
-  * @retval None
-  */
-void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
-{
-  /* Activate alarm mode */
-  alarm_active = 1;
-  alarm_flash_time = HAL_GetTick();
-  alarm_led_state = 1;
-  
-  /* Set LED to full brightness initially */
-  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_MAX_VALUE);
-  
-  /* Activate beep */
-  beep_active = 1;
-  beep_start_time = HAL_GetTick();
-  
-  /* Set PWM for beep sound (50% duty cycle) */
-  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, BEEP_PWM_PERIOD/2);  // 50%占空比
+// 简单的字符串解析时间 (HH:MM:SS)，返回0成功，-1失败
+static inline int parseTime(const char* str, int* h, int* m, int* s) {
+  // 简单实现：查找冒号，atoi
+  const char* p = str;
+  char tmp[3] = {0};
+  // 解析小时
+  if (*p < '0' || *p > '9') return -1;
+  tmp[0] = *p++;
+  if (*p >= '0' && *p <= '9') tmp[1] = *p++;
+  *h = atoi(tmp);
+  if (*p != ':') return -1;
+  p++;
+  // 解析分钟
+  if (*p < '0' || *p > '9') return -1;
+  tmp[0] = *p++;
+  if (*p >= '0' && *p <= '9') tmp[1] = *p++;
+  *m = atoi(tmp);
+  if (*p != ':') return -1;
+  p++;
+  // 解析秒
+  if (*p < '0' || *p > '9') return -1;
+  tmp[0] = *p++;
+  if (*p >= '0' && *p <= '9') tmp[1] = *p++;
+  *s = atoi(tmp);
+  return 0;
 }
 
-/**
-  * @brief  Check button state and handle press/release
-  * @retval None
-  */
-void Button_Check(void)
-{
-  uint32_t current_time = HAL_GetTick();
-  
-  // Check button state every 10ms
-  if ((current_time - last_button_check) >= 10)
-  {
-    last_button_check = current_time;
-    
-    uint8_t button_current_state = HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin);
-    
-    // Check for button press (falling edge)
-    if ((button_prev_state == 1) && (button_current_state == 0))
-    {
-      // Debounce delay
-      HAL_Delay(DEBOUNCE_DELAY);
-      
-      // Check if button is still pressed
-      if (HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin) == 0)
-      {
-        // If in alarm mode, disable alarm mode
-        if (alarm_active)
-        {
-          alarm_active = 0;
-          beep_active = 0;
-          __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
-          
-          // 停止LED闪烁，恢复到之前的LED状态
-          if(led_state == LED_ON)
-          {
-            __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
-          }
-          else
-          {
-            __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
-          }
-        }
-        else
-        {
-          // Toggle LED state
-          if(led_state == LED_OFF)
-          {
-            led_state = LED_ON;
-          }
-          else
-          {
-            led_state = LED_OFF;
-          }
-        }
-      }
-    }
-    
-    button_prev_state = button_current_state;
+// 简单的日期解析 (YYYY-MM-DD)
+static inline int parseDate(const char* str, int* y, int* m, int* d) {
+  const char* p = str;
+  char tmp[5] = {0};
+  // 解析年份4位
+  for (int i = 0; i < 4; i++) {
+    if (*p < '0' || *p > '9') return -1;
+    tmp[i] = *p++;
   }
-}
-
-/**
-  * @brief  Control beep duration
-  * @retval None
-  */
-void Beep_Control(void)
-{
-  if (beep_active)
-  {
-    if ((HAL_GetTick() - beep_start_time) >= BEEP_DURATION)
-    {
-      beep_active = 0;
-      /* Stop PWM for beep */
-      __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
-    }
-  }
-}
-
-/**
-  * @brief  Control alarm LED flashing
-  * @retval None
-  */
-void Alarm_LED_Control(void)
-{
-  if (alarm_active)
-  {
-    uint32_t current_time = HAL_GetTick();
-    if ((current_time - alarm_flash_time) >= ALARM_FLASH_PERIOD)
-    {
-      alarm_flash_time = current_time;
-      alarm_led_state = !alarm_led_state;  // Toggle LED state
-      
-      if (alarm_led_state)
-      {
-        __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, PWM_MAX_VALUE);  // Full brightness
-      }
-      else
-      {
-        __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);  // Off
-      }
-    }
-  }
-}
-
-/**
-  * @brief  Control LED breathing effect
-  * @retval None
-  */
-void LED_Breathing_Control(void)
-{
-  // 如果在闹钟模式下，不执行正常的LED渐变控制
-  if (alarm_active)
-  {
-    Alarm_LED_Control();
-    return;
-  }
-  
-  if(led_state == LED_ON)
-  {
-    /* Gradually increase brightness */
-    if(pwm_value < PWM_MAX_VALUE)
-    {
-      pwm_value += PWM_STEP_SIZE;
-      if(pwm_value > PWM_MAX_VALUE)
-      {
-        pwm_value = PWM_MAX_VALUE;
-      }
-      __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
-    }
-  }
-  else
-  {
-    /* Gradually decrease brightness */
-    if(pwm_value > 0)
-    {
-      if(pwm_value > PWM_STEP_SIZE)
-      {
-        pwm_value -= PWM_STEP_SIZE;
-      }
-      else
-      {
-        pwm_value = 0;
-      }
-      __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, pwm_value);
-    }
-  }
+  *y = atoi(tmp);
+  if (*p != '-') return -1;
+  p++;
+  // 解析月份2位
+  if (*p < '0' || *p > '9') return -1;
+  tmp[0] = *p++; tmp[1] = *p++; tmp[2] = '\0';
+  *m = atoi(tmp);
+  if (*p != '-') return -1;
+  p++;
+  // 解析日期2位
+  if (*p < '0' || *p > '9') return -1;
+  tmp[0] = *p++; tmp[1] = *p++; tmp[2] = '\0';
+  *d = atoi(tmp);
+  return 0;
 }
 /* USER CODE END 0 */
 
@@ -306,6 +176,7 @@ int main(void)
 
   /* USER CODE BEGIN SysInit */
 
+
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -314,18 +185,49 @@ int main(void)
   MX_TIM14_Init();
   MX_USART1_UART_Init();
   MX_TIM16_Init();
+  MX_TIM17_Init();
   /* USER CODE BEGIN 2 */
-  /* Start PWM signal generation for LED */
+
+  // 检查唤醒源 - 必须在所有外设初始化完成后进行
+  if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
+    // 从Standby模式唤醒
+    // 先检查闹钟唤醒标志（在RTC中断中设置）
+    if (alarmWakeup) {
+      // RTC闹钟唤醒
+      wakeupSource = WAKEUP_SOURCE_ALARM;
+      alarmWakeup = 0;
+    } else if (__HAL_PWR_GET_FLAG(PWR_FLAG_WUF1) != RESET) {
+      // 按键唤醒 (WKUP1 - PA0)
+      wakeupSource = WAKEUP_SOURCE_BUTTON;
+      __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
+    } else {
+      // 其他唤醒源
+      wakeupSource = WAKEUP_SOURCE_OTHER;
+    }
+    // 清除Standby标志
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+  } else {
+    // 复位启动
+    wakeupSource = WAKEUP_SOURCE_RESET;
+  }
+
+  // 启动TIM14 PWM输出 (LEDA)
   HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
-  /* Set initial PWM value to 0 */
-  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);
   
-  /* Initialize TIM16 for beep (but don't start it yet) */
+  // 启动TIM17 PWM输出 (LEDB)
+  HAL_TIM_PWM_Start(&htim17, TIM_CHANNEL_1);
+
+  // 启动TIM16 PWM输出 (蜂鸣器)
   HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
   __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+
+  // 初始化完成后直接进入微光模式
+  SetLightDim();
+  lightState = LIGHT_DIM;
+  dimStartTime = HAL_GetTick();
   
-  /* Test beep on startup to verify it works */
-  Simple_Beep_Test();
+  // 启动串口接收
+  HAL_UART_Receive_IT(&huart1, &rxBuffer[rxIndex], 1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -335,10 +237,126 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    Button_Check();
-    LED_Breathing_Control();
-    Beep_Control();
-    HAL_Delay(10);  /* 10ms delay for smooth transition */
+
+    // 处理蜂鸣器播放标志 - 仅当闹钟唤醒时才播放
+    if (playBeepFlag && wakeupSource == WAKEUP_SOURCE_ALARM) {
+      playBeepFlag = 0;
+      PlayBeepSound();
+    }
+
+    // 每隔1秒打印系统时间（仅在非待机模式下）
+    if ((HAL_GetTick() - lastPrintTime) >= 1000) {
+      // 获取RTC时间
+      RTC_TimeTypeDef sTime;
+      RTC_DateTypeDef sDate;
+      
+      HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+      HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+      
+      // 获取闹铃状态
+      char* alarmStatus = GetAlarmStatus();
+     // 根据唤醒源生成相应的字符串
+      char* wakeupSourceStr;
+      switch (wakeupSource) {
+        case WAKEUP_SOURCE_BUTTON:
+          wakeupSourceStr = "BUTTON";
+          break;
+        case WAKEUP_SOURCE_ALARM:
+          wakeupSourceStr = "ALARM";
+          break;
+        case WAKEUP_SOURCE_OTHER:
+          wakeupSourceStr = "OTHER";
+          break;
+        case WAKEUP_SOURCE_RESET:
+        default:
+          wakeupSourceStr = "RESET";
+          break;
+      }
+      
+      // 格式化时间字符串 (简化版，节省代码空间)
+      char timeStr[50];
+      char *p = timeStr;
+      // YYYY-MM-DD
+      *p++ = '2'; *p++ = '0';
+      *p++ = (sDate.Year / 10) + '0';
+      *p++ = (sDate.Year % 10) + '0';
+      *p++ = '-';
+      *p++ = (sDate.Month / 10) + '0';
+      *p++ = (sDate.Month % 10) + '0';
+      *p++ = '-';
+      *p++ = (sDate.Date / 10) + '0';
+      *p++ = (sDate.Date % 10) + '0';
+      *p++ = ' ';
+      // HH:MM:SS
+      *p++ = (sTime.Hours / 10) + '0';
+      *p++ = (sTime.Hours % 10) + '0';
+      *p++ = ':';
+      *p++ = (sTime.Minutes / 10) + '0';
+      *p++ = (sTime.Minutes % 10) + '0';
+      *p++ = ':';
+      *p++ = (sTime.Seconds / 10) + '0';
+      *p++ = (sTime.Seconds % 10) + '0';
+      *p++ = ' ';
+      // ALARM:status
+      strcpy(p, "ALARM:"); p += 6;
+      strcpy(p, alarmStatus); p += strlen(alarmStatus);
+      *p++ = ' ';
+      // WAKEUP:source
+      strcpy(p, "WAKEUP:"); p += 7;
+      strcpy(p, wakeupSourceStr); p += strlen(wakeupSourceStr);
+      *p++ = '\r'; *p++ = '\n';
+      *p = '\0';
+      
+      // 通过串口打印时间、日期和闹铃信息
+      HAL_UART_Transmit(&huart1, (uint8_t*)timeStr, strlen(timeStr), HAL_MAX_DELAY);
+      
+      // 更新上次打印时间
+      lastPrintTime = HAL_GetTick();
+    }
+
+    // 检查微光模式超时 (30分钟)
+    if (lightState == LIGHT_DIM) {
+      if ((HAL_GetTick() - dimStartTime) >= DIM_TIMEOUT_MS) {
+        // 微光模式超时，关闭灯光并进入待机模式
+        TurnOffLight();
+        EnterStandbyMode();
+      }
+    }
+    
+    // 检查按键状态（软件轮询方式检测按键释放）
+    if (buttonPressed) {
+      
+      if (HAL_GPIO_ReadPin(BIG_BTN_GPIO_Port, BIG_BTN_Pin) == GPIO_PIN_RESET) {
+        // 按键已释放，处理按键事件
+        buttonPressed = 0;
+        uint32_t pressDuration = HAL_GetTick() - pressStartTime;
+
+        uint32_t lightDuration  = HAL_GetTick() - dimStartTime;
+        // 根据当前状态和按压时间处理按键事件
+        // 灯已经亮了超过 1 秒才允许处理，避免启动后 1 秒内的按键被响应。
+        if (lightState == LIGHT_DIM && pressDuration <= SHORT_PRESS_MAX_MS && lightDuration > 1000) {
+          // 微光模式下按键 短按：关闭灯光并进入待机模式
+          TurnOffLight();
+          EnterStandbyMode();
+        } else if (lightState == LIGHT_BRIGHT) {
+          // 高亮模式下按键：关闭灯光并进入待机模式
+          TurnOffLight();
+          EnterStandbyMode();
+        }
+      } else {
+        // 按键仍处于按下状态，检查是否为长按
+        uint32_t pressDuration = HAL_GetTick() - pressStartTime;
+        if (pressDuration > LONG_PRESS_MS && lightState == LIGHT_DIM) {
+          // 长按：进入高亮模式（无需等待释放）
+          SetLightBright();
+          lightState = LIGHT_BRIGHT;
+          buttonPressed = 0; // 防止重复触发
+        }
+      }
+    }
+    
+    // 短暂延时以减少CPU占用
+    HAL_Delay(10);
   }
   /* USER CODE END 3 */
 }
@@ -390,6 +408,384 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+  * @brief  USART1中断回调函数
+  * @param  huart 串口句柄
+  * @retval None
+  */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if(huart->Instance == USART1) {
+    // 如果接收到回车符或换行符，则处理命令
+    if(rxBuffer[rxIndex] == '\r' || rxBuffer[rxIndex] == '\n') {
+      // 添加字符串结束符
+      rxBuffer[rxIndex] = '\0';
+      
+      // 处理命令（如果缓冲区不为空）
+      if(rxIndex > 0) {
+        ProcessSerialCommand((char*)rxBuffer);
+      }
+      
+      // 重置接收索引
+      rxIndex = 0;
+    } else {
+      // 继续接收下一个字符
+      rxIndex++;
+      
+      // 防止缓冲区溢出
+      if(rxIndex >= sizeof(rxBuffer)-1) {
+        rxIndex = 0;
+      }
+    }
+    
+    // 继续接收下一个字节
+    HAL_UART_Receive_IT(&huart1, &rxBuffer[rxIndex], 1);
+  }
+}
+
+/**
+  * @brief  处理串口命令
+  * @param  command 命令字符串
+  * @retval None
+  */
+void ProcessSerialCommand(char* command) {
+  // 移除可能存在的换行符
+  char* newline = strchr(command, '\r');
+  if(newline) *newline = '\0';
+  newline = strchr(command, '\n');
+  if(newline) *newline = '\0';
+  
+  // 解析命令
+  if(strncmp(command, "TIME=", 5) == 0) {
+    // 设置时间命令，格式为 TIME=HH:MM:SS
+    SetSystemTime(command+5);
+  } else if(strncmp(command, "DATE=", 5) == 0) {
+    // 设置日期命令，格式为 DATE=YYYY-MM-DD
+    SetSystemDate(command+5);
+  } else if(strncmp(command, "ALARM=", 6) == 0) {
+    // 设置闹铃命令，格式为 ALARM=HH:MM:SS 或 ALARM=OFF
+    SetAlarmTime(command+6);
+  } else if(strcmp(command, "BEEP=1") == 0) {
+    // 播放提示音命令 - 设置标志由主循环处理
+    playBeepFlag = 1;
+    char successMsg[] = "Beep command received\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
+  } else {
+    // 未知命令，返回错误信息
+    char errorMsg[] = "ERROR: Unknown command\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+  }
+}
+
+/**
+  * @brief  设置系统时间
+  * @param  timeStr 时间字符串，格式为 HH:MM:SS
+  * @retval None
+  */
+void SetSystemTime(char* timeStr) {
+  int hours, minutes, seconds;
+
+  // 解析时间字符串
+  if(parseTime(timeStr, &hours, &minutes, &seconds) == 0) {
+    // 验证时间有效性
+    if(hours >= 0 && hours <= 23 &&
+       minutes >= 0 && minutes <= 59 &&
+       seconds >= 0 && seconds <= 59) {
+
+      // 设置RTC时间
+      RTC_TimeTypeDef sTime;
+      sTime.Hours = hours;
+      sTime.Minutes = minutes;
+      sTime.Seconds = seconds;
+      sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+      sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+
+      if(HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) == HAL_OK) {
+        char successMsg[] = "Time set successfully\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
+      } else {
+        char errorMsg[] = "ERROR: Failed to set time\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+      }
+    } else {
+      char errorMsg[] = "ERROR: Invalid time\r\n";
+      HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+    }
+  } else {
+    char errorMsg[] = "ERROR: Invalid time\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+  }
+}
+
+/**
+  * @brief  设置系统日期
+  * @param  dateStr 日期字符串，格式为 YYYY-MM-DD
+  * @retval None
+  */
+void SetSystemDate(char* dateStr) {
+  int year, month, day;
+
+  // 解析日期字符串
+  if(parseDate(dateStr, &year, &month, &day) == 0) {
+    // 验证日期有效性
+    if(year >= 2000 && year <= 2099 &&
+       month >= 1 && month <= 12 &&
+       day >= 1 && day <= 31) {
+
+      // 转换年份为RTC格式 (0-99)
+      year = year - 2000;
+
+      // 设置RTC日期
+      RTC_DateTypeDef sDate;
+      sDate.Year = year;
+      sDate.Month = month;
+      sDate.Date = day;
+      sDate.WeekDay = RTC_WEEKDAY_MONDAY;
+
+      if(HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN) == HAL_OK) {
+        char successMsg[] = "Date set OK\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
+      } else {
+        char errorMsg[] = "ERROR: Set date\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+      }
+    } else {
+      char errorMsg[] = "ERROR: Invalid date\r\n";
+      HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+    }
+  } else {
+    char errorMsg[] = "ERROR: Invalid date\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+  }
+}
+
+/**
+  * @brief  设置闹铃时间
+  * @param  alarmStr 闹铃字符串，格式为 HH:MM:SS 或 OFF
+  * @retval None
+  */
+void SetAlarmTime(char* alarmStr) {
+  // 检查是否为取消闹铃命令
+  if(strcmp(alarmStr, "OFF") == 0) {
+    // 取消闹铃
+    CancelAlarm();
+    return;
+  }
+
+  int hours, minutes, seconds;
+
+  // 解析时间字符串
+  if(parseTime(alarmStr, &hours, &minutes, &seconds) == 0) {
+    // 验证时间有效性
+    if(hours >= 0 && hours <= 23 &&
+       minutes >= 0 && minutes <= 59 &&
+       seconds >= 0 && seconds <= 59) {
+
+      // 设置RTC闹铃 - 使用日期模式实现每天重复
+      RTC_AlarmTypeDef sAlarm;
+      sAlarm.AlarmTime.Hours = hours;
+      sAlarm.AlarmTime.Minutes = minutes;
+      sAlarm.AlarmTime.Seconds = seconds;
+      sAlarm.AlarmTime.SubSeconds = 0;
+      sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+      sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
+      sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY;
+      sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
+      sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
+      sAlarm.AlarmDateWeekDay = 0x1;
+      sAlarm.Alarm = RTC_ALARM_A;
+
+      if(HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN) == HAL_OK) {
+        alarmEnabled = 1;  // 标记闹铃已启用
+        char successMsg[] = "Alarm set OK\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
+      } else {
+        char errorMsg[] = "ERROR: Set alarm\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+      }
+    } else {
+      char errorMsg[] = "ERROR: Invalid alarm\r\n";
+      HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+    }
+  } else {
+    char errorMsg[] = "ERROR: Invalid alarm\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+  }
+}
+
+/**
+  * @brief  取消闹铃
+  * @retval None
+  */
+void CancelAlarm(void) {
+  // 取消RTC闹铃
+  if(HAL_RTC_DeactivateAlarm(&hrtc, RTC_ALARM_A) == HAL_OK) {
+    alarmEnabled = 0;  // 标记闹铃已停用
+    char successMsg[] = "Alarm cancelled successfully\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
+  } else {
+    char errorMsg[] = "ERROR: Failed to cancel alarm\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
+  }
+}
+
+/**
+  * @brief  进入Standby模式
+  * @retval None
+  */
+void EnterStandbyMode(void) {
+// 关闭所有外设
+  HAL_TIM_PWM_Stop(&htim14, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Stop(&htim17, TIM_CHANNEL_1);
+
+  // 清除RTC闹钟标志，以便下次闹钟能正常触发
+  __HAL_RTC_ALARM_CLEAR_FLAG(&hrtc, RTC_FLAG_ALRAF);
+
+  // 清除所有挂起的中断
+  __HAL_RCC_CLEAR_RESET_FLAGS();
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1 | PWR_FLAG_WUF2 | PWR_FLAG_WUFI | PWR_FLAG_WUF6 | PWR_FLAG_SB);
+
+  // 使能唤醒引脚 (PA0)
+  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
+
+  // 注意: RTC闹铃唤醒不需要使能WKUP4引脚，它通过内部唤醒线路触发
+  // RTC闹铃配置已在rtc.c中通过HAL_RTC_SetAlarm_IT完成
+
+  // 发送进入待机模式的消息
+  char standbyMsg[] = "Entering Standby Mode...\r\n";
+  HAL_UART_Transmit(&huart1, (uint8_t*)standbyMsg, strlen(standbyMsg), HAL_MAX_DELAY);
+
+  // 重置时间打印变量
+  lastPrintTime = 0;
+
+  // // 进入Standby模式
+  HAL_PWR_EnterSTANDBYMode();
+}
+
+/**
+  * @brief  设置微光模式 (10% PWM)
+  * @retval None
+  */
+void SetLightDim(void) {
+  // 设置PWM占空比为10% (周期为1600，10%为160)
+  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 0);  // LEDA 10%
+  __HAL_TIM_SET_COMPARE(&htim17, TIM_CHANNEL_1, 100);// LEDB 10%
+}
+
+/**
+  * @brief  设置高亮模式 (50% PWM)
+  * @retval None
+  */
+void SetLightBright(void) {
+  // 设置PWM占空比为50% (周期为1600，50%为800)
+  __HAL_TIM_SET_COMPARE(&htim14, TIM_CHANNEL_1, 800);
+  __HAL_TIM_SET_COMPARE(&htim17, TIM_CHANNEL_1, 160);
+}
+
+/**
+  * @brief  关闭灯光
+  * @retval None
+  */
+void TurnOffLight(void) {
+  // 设置PWM占空比为0%
+  __HAL_TIM_SET_COMPARE(&htim17, TIM_CHANNEL_1, 0);
+}
+
+/**
+  * @brief  播放提示音 - 春雨沙沙
+  * @retval None
+  */
+void PlayBeepSound(void) {
+  // APB1 = 16MHz, Prescaler = 15 → 1MHz
+  // Period = 1000000 / Hz - 1
+  // 0 = 休止符
+
+  typedef struct {
+    uint32_t period;    // ARR值，0=休止
+    uint16_t delay;     // 延时ms
+  } Note;
+  Note melody[] = {
+    // 春雨沙沙沙 沙沙沙
+    {2551, 200}, {2273, 200}, {2551, 200}, {3030, 300},
+    {2551, 200}, {2273, 200}, {2551, 200}, {3030, 300},
+    // 滴答滴答 滴答滴答
+    {1911, 150}, {2551, 150}, {1911, 150}, {2551, 150},
+    {1911, 150}, {2551, 150}, {1911, 150}, {2551, 150},
+    // 种子发芽 种子发芽
+    {1517, 250}, {0, 100}, {1517, 250}, {0, 100},
+    {1704, 250}, {0, 100}, {1911, 250}, {0, 100},
+    // 啦啦啦啦
+    {1911, 150}, {1911, 150}, {1911, 150}, {1911, 150},
+    {2551, 500},
+    // 重复一遍
+    {2551, 200}, {2273, 200}, {2551, 200}, {3030, 300},
+    {2551, 200}, {2273, 200}, {2551, 200}, {3030, 300},
+    {1911, 150}, {2551, 150}, {1911, 150}, {2551, 150},
+    {1517, 250}, {0, 100}, {1704, 250}, {0, 100},
+    {1911, 600},
+  };
+
+  // 配置定时器基础参数
+  htim16.Init.Prescaler = 15;   // 16MHz / 16 = 1MHz
+  htim16.Init.Period = melody[0].period;
+  htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim16.Init.RepetitionCounter = 0;
+  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+
+  if (HAL_TIM_Base_Init(&htim16) != HAL_OK) return;
+  if (HAL_TIM_PWM_Init(&htim16) != HAL_OK) return;
+
+  // 播放旋律
+  for (int i = 0; i < 37; i++) {
+    if (melody[i].period == 0) {
+      // 休止符 - 关闭声音
+      __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+    } else {
+      // 设置频率和占空比(30%)
+      __HAL_TIM_SET_AUTORELOAD(&htim16, melody[i].period);
+      __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, melody[i].period * 30 / 100);
+      HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+    }
+    HAL_Delay(melody[i].delay);
+  }
+
+  // 停止蜂鸣器
+  HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
+  __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+}
+
+/**
+  * @brief  获取闹铃状态
+  * @retval 闹铃状态字符串
+  */
+char* GetAlarmStatus(void) {
+  RTC_AlarmTypeDef sAlarm;
+  static char alarmStr[12];
+
+  // 先检查闹铃启用标志，避免读取到已停用闹铃的残留寄存器值
+  if (!alarmEnabled) {
+    return "OFF";
+  }
+
+  // 尝试获取闹铃信息
+  if (HAL_RTC_GetAlarm(&hrtc, &sAlarm, RTC_ALARM_A, RTC_FORMAT_BIN) == HAL_OK) {
+    // 如果闹铃已设置，返回闹铃时间 (HH:MM:SS)
+    alarmStr[0] = (sAlarm.AlarmTime.Hours / 10) + '0';
+    alarmStr[1] = (sAlarm.AlarmTime.Hours % 10) + '0';
+    alarmStr[2] = ':';
+    alarmStr[3] = (sAlarm.AlarmTime.Minutes / 10) + '0';
+    alarmStr[4] = (sAlarm.AlarmTime.Minutes % 10) + '0';
+    alarmStr[5] = ':';
+    alarmStr[6] = (sAlarm.AlarmTime.Seconds / 10) + '0';
+    alarmStr[7] = (sAlarm.AlarmTime.Seconds % 10) + '0';
+    alarmStr[8] = '\0';
+    return alarmStr;
+  } else {
+    // 如果闹铃未设置或获取失败，返回OFF
+    return "OFF";
+  }
+}
+
 
 /* USER CODE END 4 */
 

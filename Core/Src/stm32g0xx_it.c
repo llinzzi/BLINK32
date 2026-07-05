@@ -56,7 +56,14 @@
 
 /* External variables --------------------------------------------------------*/
 extern RTC_HandleTypeDef hrtc;
+extern UART_HandleTypeDef huart1;
 /* USER CODE BEGIN EV */
+
+// 声明外部变量
+extern LightStateTypeDef lightState;
+extern uint32_t pressStartTime;
+extern uint32_t dimStartTime;
+extern uint8_t buttonPressed;
 
 /* USER CODE END EV */
 
@@ -168,5 +175,38 @@ void EXTI0_1_IRQHandler(void)
   /* USER CODE END EXTI0_1_IRQn 1 */
 }
 
+/**
+  * @brief This function handles USART1 global interrupt / USART1 wake-up interrupt through EXTI line 25.
+  */
+void USART1_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART1_IRQn 0 */
+
+  /* USER CODE END USART1_IRQn 0 */
+  HAL_UART_IRQHandler(&huart1);
+  /* USER CODE BEGIN USART1_IRQn 1 */
+
+  /* USER CODE END USART1_IRQn 1 */
+}
+
 /* USER CODE BEGIN 1 */
+/**
+  * @brief  EXTI line rising detection callback.
+  * @param  GPIO_Pin: Specifies the port pin connected to corresponding EXTI line.
+  * @retval None
+  */
+void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == BIG_BTN_Pin) {
+    // 按键按下，记录按下时间
+    pressStartTime = HAL_GetTick();
+    
+    // 启动一个软件定时器来检测长按
+    // 在主循环中检查按键状态
+    buttonPressed = 1;
+  }
+}
+
+// 移除HAL_GPIO_EXTI_Falling_Callback函数，因为GPIO配置为仅上升沿触发
+
 /* USER CODE END 1 */

@@ -31,17 +31,31 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "usart.h"
+#include "rtc.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
+// 灯光状态枚举
+typedef enum {
+  LIGHT_OFF = 0,
+  LIGHT_DIM,      // 微光模式
+  LIGHT_BRIGHT    // 高亮模式
+} LightStateTypeDef;
 
+// 添加时间打印相关变量
+extern uint32_t lastPrintTime;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
-
+#define SHORT_PRESS_MIN_MS    500
+#define SHORT_PRESS_MAX_MS    2000
+#define LONG_PRESS_MS         1500
+#define DIM_TIMEOUT_MS        1800000  // 30分钟 = 180,000毫秒
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
@@ -53,7 +67,11 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+void EnterStandbyMode(void);
+void SetLightDim(void);
+void SetLightBright(void);
+void TurnOffLight(void);
+char* GetAlarmStatus(void);  // 添加获取闹铃状态的函数声明
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -64,6 +82,8 @@ void Error_Handler(void);
 #define LEDA_GPIO_Port GPIOA
 #define BEEP_Pin GPIO_PIN_6
 #define BEEP_GPIO_Port GPIOA
+#define LEDB_Pin GPIO_PIN_7
+#define LEDB_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 
