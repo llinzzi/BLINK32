@@ -60,6 +60,7 @@ uint8_t rxBuffer[50];  // 接收缓冲区
 uint8_t rxIndex = 0;   // 接收索引
 volatile uint8_t playBeepFlag = 0;  // 蜂鸣器播放标志
 volatile uint8_t alarmWakeup = 0;     // 闹钟唤醒标志
+uint8_t alarmEnabled = 0;             // 闹铃启用标志
 
 typedef enum {
   WAKEUP_SOURCE_RESET = 0,
@@ -595,6 +596,7 @@ void SetAlarmTime(char* alarmStr) {
       sAlarm.Alarm = RTC_ALARM_A;
 
       if(HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN) == HAL_OK) {
+        alarmEnabled = 1;  // 标记闹铃已启用
         char successMsg[] = "Alarm set OK\r\n";
         HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
       } else {
@@ -618,6 +620,7 @@ void SetAlarmTime(char* alarmStr) {
 void CancelAlarm(void) {
   // 取消RTC闹铃
   if(HAL_RTC_DeactivateAlarm(&hrtc, RTC_ALARM_A) == HAL_OK) {
+    alarmEnabled = 0;  // 标记闹铃已停用
     char successMsg[] = "Alarm cancelled successfully\r\n";
     HAL_UART_Transmit(&huart1, (uint8_t*)successMsg, strlen(successMsg), HAL_MAX_DELAY);
   } else {
@@ -758,6 +761,11 @@ void PlayBeepSound(void) {
 char* GetAlarmStatus(void) {
   RTC_AlarmTypeDef sAlarm;
   static char alarmStr[12];
+
+  // 先检查闹铃启用标志，避免读取到已停用闹铃的残留寄存器值
+  if (!alarmEnabled) {
+    return "OFF";
+  }
 
   // 尝试获取闹铃信息
   if (HAL_RTC_GetAlarm(&hrtc, &sAlarm, RTC_ALARM_A, RTC_FORMAT_BIN) == HAL_OK) {
